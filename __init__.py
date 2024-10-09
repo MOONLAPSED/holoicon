@@ -1,5 +1,115 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# STATE_START
+{
+  "current_step": 0
+}
+# STATE_END
+import asyncio
+import inspect
+import json
+import logging
+import os
+import hashlib
+import platform
+import pathlib
+import struct
+import sys
+import threading
+import time
+import shlex
+import shutil
+import uuid
+import argparse
+from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from functools import wraps, lru_cache
+from pathlib import Path
+from typing import (
+    Any, Dict, List, Optional, Union, Callable, TypeVar, Tuple, Generic, Set, Coroutine, 
+    Type, NamedTuple, ClassVar, Protocol
+    )
+from types import SimpleNamespace
+from queue import Queue, Empty
+from asyncio import Queue as AsyncQueue
+import ctypes
+import ast
+import tokenize
+import io
+import importlib as _importlib
+from importlib.util import spec_from_file_location, module_from_spec
+import re
+import dis
+import tokenize
+import linecache
+import tracemalloc
+tracemalloc.start()
+# Specify the files and lines to exclude from tracking
+tracefilter = ("<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
+tracemalloc.BaseFilter(tracefilter)
+def display_top(snapshot, key_type='lineno', limit=3):
+    """Display top memory consuming lines"""
+    filters = [tracemalloc.Filter(False, item) for item in tracefilter]
+    snapshot = snapshot.filter_traces(filters)  # Apply the filters to the snapshot
+    top_stats = snapshot.statistics(key_type)
+    print("Top {} lines".format(limit))
 
-# Setup custom logging format for enhanced error messages and debugging
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        print("#{}: {}:{}: {:.1f} KiB".format(index, frame.filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            print('    {}'.format(line))
+    
+    # Show the total size and count of other items
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        print("{} other: {:.1f} KiB".format(len(other), size / 1024))
+
+    total = sum(stat.size for stat in top_stats)
+    print("Total allocated size: {:.1f} KiB".format(total / 1024))
+
+# main() ->
+logger = logging.getLogger(__name__)
+snapshot = tracemalloc.take_snapshot()
+display_top(snapshot)
+# <- end main() (testing main)
+
+# Platform-specific optimizations
+if os.name == 'nt':
+    import win32api
+    import win32process
+
+    def set_process_priority(priority: int):
+        handle = win32api.GetCurrentProcess()
+        win32process.SetPriorityClass(handle, priority)
+    
+    def set_thread_priority(priority: int):
+        handle = win32api.GetCurrentThread()
+        win32process.SetThreadPriority(handle, priority)
+    try:
+        set_process_priority(win32process.REALTIME_PRIORITY_CLASS)
+        set_thread_priority(win32process.THREAD_PRIORITY_TIME_CRITICAL)
+    except Exception as e:
+        logger.warning(f"Failed to set process priority: {e}")
+    finally:
+        logger.info("'nt' platform detected, optimizations applied.")
+
+elif os.name == 'posix':
+    import resource
+
+    def set_process_priority(priority: int):
+        try:
+            os.nice(priority)
+        except PermissionError:
+            logger.warning("Unable to set process priority. Running with default priority.")
+
+#-------------------------------###############################-------------------------------#
+
 class customFormatter(logging.Formatter):
     grey = "\x1b[38;20m"
     yellow = "\x1b[33;20m"
@@ -56,6 +166,8 @@ def parseLargs():
     logger = setup_logger(name=args.log_name, level=log_level, datefmt=args.log_datefmt, handlers=handlers)
     logger.info("Logger setup complete.")
 
+#-------------------------------###########MIXINS##############-------------------------------#
+
 def load_modules():
     try:
         mixins = []
@@ -72,40 +184,22 @@ def load_modules():
             mixins.append(module)
         return mixins
     except Exception as e:
-        Logger.error(f"Error importing internal modules: {e}")
+        logger.error(f"Error importing internal modules: {e}")
         sys.exit(1)
 
-# Import the internal modules
-mixins = load_modules()
+mixins = load_modules() # Import the internal modules
 
 if mixins:
     __all__ = [mixin.__name__ for mixin in mixins]
 else:
     __all__ = []
 
-# Handle platform-specific dynamic linking logic
-if IS_POSIX:
-    try:
-        from ctypes import cdll
-        Logger.info("POSIX system detected.")
-    except ImportError:
-        Logger.error("Error loading POSIX dynamic linking libraries.")
-else:
-    try:
-        from ctypes import windll
-        Logger.info("Windows system detected.")
-    except ImportError:
-        Logger.error("Error loading Windows dynamic linking libraries.")
-
-import importlib.util
-from pathlib import Path
-from types import SimpleNamespace
-import ast
 
 """ hacked namespace uses `__all__` as a whitelist of symbols which are executable source code.
-Non-whitelisted modules or runtime constituents are treated as 'data' which we call associative 
-'articles' within the knowledge base, loaded at runtime."""
+Non-whitelisted modules or runtime SimpleNameSpace()(s) are treated as 'data' which we call associative 
+'articles' within the knowledge base, loaded at runtime. They are, however, logic and state."""
 
+"""
 class KnowledgeBase:
     def __init__(self, base_dir):
         self.base_dir = Path(base_dir)
@@ -159,3 +253,37 @@ class KnowledgeBase:
 
 def initialize_kb(base_dir):
     return KnowledgeBase(base_dir)
+"""
+
+#-------------------------------###############################-------------------------------#
+#-------------------------------########DECORATORS#############-------------------------------#
+#-------------------------------###############################-------------------------------#
+def memoize(func: Callable) -> Callable:
+    return lru_cache(maxsize=None)(func)
+
+def log(level=logging.INFO):
+    def decorator(func):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
+            try:
+                result = await func(*args, **kwargs)
+                logger.log(level, f"Completed {func.__name__} with result: {result}")
+                return result
+            except Exception as e:
+                logger.exception(f"Error in {func.__name__}: {e}")
+                raise
+
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
+            try:
+                result = func(*args, **kwargs)
+                logger.log(level, f"Completed {func.__name__} with result: {result}")
+                return result
+            except Exception as e:
+                logger.exception(f"Error in {func.__name__}: {e}")
+                raise
+
+        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+    return decorator

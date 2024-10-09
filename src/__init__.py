@@ -16,23 +16,6 @@ elif IS_POSIX:
             os.nice(priority)
         except PermissionError:
             print("Warning: Unable to set process priority. Running with default priority.")
-
-#-------------------------------#########TYPING################-------------------------------#
-class AtomType(Enum):
-    FUNCTION = auto() # FIRST CLASS FUNCTIONS
-    VALUE = auto()
-    CLASS = auto() # CLASSES ARE FUNCTIONS, BUT CAN HAVE A CLASS POLYMORPH
-    MODULE = auto() # SimpleNameSpace()(s) are MODULE (~MODULE IS A SNS)
-
-
-
-
-#-------------------------------###############################-------------------------------#
-#-------------------------------###############################-------------------------------#
-#-------------------------------###############################-------------------------------#
-
-
-#-------------------------------######DECORATORS###############-------------------------------#
 def memoize(func: Callable) -> Callable: # caching decorator
     return lru_cache(maxsize=None)(func)
 
@@ -62,3 +45,19 @@ def log(level=logging.INFO):
 
         return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
     return decorator
+#-------------------------------#########TYPING################-------------------------------#
+class AtomType(Enum):
+    FUNCTION = auto() # FIRST CLASS FUNCTIONS
+    VALUE = auto()
+    CLASS = auto() # CLASSES ARE FUNCTIONS, BUT CAN HAVE A CLASS POLYMORPH
+    MODULE = auto() # SimpleNameSpace()(s) are MODULE (~MODULE IS A SNS)
+
+
+
+
+#-------------------------------###############################-------------------------------#
+#-------------------------------###############################-------------------------------#
+#-------------------------------###############################-------------------------------#
+
+
+#-------------------------------######DECORATORS###############-------------------------------#
