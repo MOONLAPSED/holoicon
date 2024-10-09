@@ -1,10 +1,10 @@
 # holoicon
 
-holographic + homoiconistic + nominative bijection = holoiconistic
+Holoiconism is a new bottom up, flipped inside-out and projected inward holographic element of a rightside-in, radiative, top-down from first principles ontology; flip/flop. Got it?
 
-holoiconism is a new bottom up, flipped inside-out and projected inward holographic element of a rightside-in, radiative, top-down from first principles ontology; flip/flop. Got it?
+`holographic + homoiconistic + nominative bijection = holoiconistic`
 
-The flip/flop model has an inherent resonance with quantum computation, where qubits can exist in superposition states (akin to your binary 0/1 flip) and then collapse into defined values (flop). As quantum hardware becomes more viable, this duality might serve as a core foundation for the runtime architecture, blending classical and quantum operations. It may be that it is not possible, classically, but per the theory put fourth by the author in /cognosis/ it may also be possible that a domain-trained (aka rlhf) llm 'agent' (gradient descent, yadda yadda) can effectivly simmulate observation and the collapse of the wave function in an otherwise unperturbed situation. If potentiality is represented by a perfect sphere elevated to the exact highest possible potential energy position, balancing at the top of a saddle; then 'inference' is as capable of providing the 'initial conditions' as any conscious actor.
+The flip/flop model has an inherent resonance with quantum computation, where qubits can exist in superposition states (akin to binary 0/1 flip(with an arbitrarily large bijective map/pairing for every bit transition)) and then collapse into defined values (flop). As quantum hardware becomes more viable, this duality might serve as a core foundation for the runtime architecture, blending classical and quantum operations. It may be that it is not possible, classically, but per the theory put fourth by the author in /cognosis/ it may also be possible that a domain-trained (aka rlhf) llm 'agent' (gradient descent, yadda yadda) can effectivly simmulate observation and the collapse of the wave function in an otherwise unperturbed situation. If potentiality is represented by a perfect sphere elevated to the exact highest possible potential energy position, balancing at the top of a saddle; then 'inference' is as capable of providing the 'initial conditions' as any conscious actor.
 
 - **Top-down, radiative, and first-principle ontology**: Traditional physics or computational models often work this way. They radiate outward from established laws, projecting onto emergent structures and configurations.
   
@@ -39,11 +39,12 @@ The **bottom-up vs. top-down dialectic** here offers a **recursive, cyclical dyn
 Bottom-Up, Top-Down Interplay (Flip/Flop):
 
     Flip: This is the phase where states remain superposed. From a bottom-up perspective, this represents the raw potentiality of the system. Whether it’s the binary logical duality of 0/1, or quantum superposition, flip is the universe of all possible configurations. This might represent the holographic element, where data is encoded from all perspectives, maintaining every potential in a suspended state.
-    Flop: Once conditions are satisfied, or an observation is made, the state collapses into a particular outcome (flop). This represents the top-down projection, where emergent phenomena materialize from first principles into definitive logical or physical states.### Philosophy of Reality
 
-While this runtime might not fully describe **literal reality**, it **models** reality’s emergent properties through a rich framework of dualities. What’s unique is the **ontological basis** of Holoiconism: it treats **computation itself as the foundational principle**, where reality is simply one emergent possibility out of many that the system could instantiate.
+    Flop: Once conditions are satisfied, or an observation is made, the state collapses into a particular outcome (flop). This represents the top-down projection, where emergent phenomena materialize from first principles into definitive logical or physical states.
+    
+### Philosophy of 'reality' and space (as metaphors):
 
-
+While this runtime might not fully describe **literal reality**, it **models** reality’s emergent properties through a rich framework of dualities. What’s unique is the **ontological basis** of Holoiconism: it treats **computation itself as the foundational principle**, where a 3+1D observer reality is simply one emergent possibility out of many that the system could interoperate with. I would say that it is like chaos computing, which models 'starting conditions' as i/o, while both the operations done on those starting conditions and the system's state is defined by the **emergent properties** of its own computational processes.
 
 # Holoiconism: A New Paradigm in Computational Ontology
 
@@ -61,6 +62,7 @@ Holoiconism presents a novel approach to computational ontology, blending bottom
 2. Quantum Resonance:
    - Aligns with qubit superposition and collapse
    - Potential for simulating wave function collapse in domain-trained LLM agents
+   - Can be formulated as a kind of PID + feedback control loop on high-dimensional state spaces (This is why I need to get complex number math working; eigenvectors, phase, and so on)
 
 3. Dual Perspectives:
    - Top-down (Radiative, Classical): Inherits from broader principles
@@ -80,16 +82,6 @@ Holoiconism presents a novel approach to computational ontology, blending bottom
    - Continuous repacking into intermediate bytecode after each cycle
    - Bytecode carries full potential of both projection and collapse modes
 
-## Philosophical Implications
-
-1. Ontological Basis:
-   - Treats computation as a foundational principle
-   - Reality viewed as one emergent possibility among many
-
-2. Self-Referential System:
-   - Continuously rewrites itself from both top-down and bottom-up perspectives
-   - Mirrors complementary realities in a dual-sided hologram
-
-3. Emergence and Complexity:
+4. Emergence and Complexity:
    - Handles emergence through oscillation between inside-out and outside-in perspectives
    - Each state transition treated as an ontological event

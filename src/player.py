@@ -124,6 +124,59 @@ def handle_input() -> None:
                 qqueue = ""
     except KeyboardInterrupt:
         print("\nInput processing interrupted by user.")
+class GameWorld:
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self.map = [[' ' for _ in range(width)] for _ in range(height)]
+        self.player_position = [0, 0]  # Starting point (0,0)
+
+    def move_player(self, direction):
+        x, y = self.player_position
+        if direction == 'up' and x > 0:
+            self.player_position[0] -= 1
+        elif direction == 'down' and x < self.height - 1:
+            self.player_position[0] += 1
+        elif direction == 'left' and y > 0:
+            self.player_position[1] -= 1
+        elif direction == 'right' and y < self.width - 1:
+            self.player_position[1] += 1
+
+    def render(self):
+        x, y = self.player_position
+        view = [row[:] for row in self.map]
+        view[x][y] = 'P'  # P for Player
+        for row in view:
+            print(''.join(row))
+        print("\nUse arrow keys to move. Type 'quit' to exit.")
+
+def main_game_loop():
+    game_world = GameWorld(width=10, height=10)
+    repl = REPL()
+
+    try:
+        while repl.running:
+            command = repl.read()
+
+            if command:
+                if command.startswith('\x1b'):  # Escape sequence start
+                    if command == ARROW_UP:
+                        game_world.move_player('up')
+                    elif command == ARROW_DOWN:
+                        game_world.move_player('down')
+                    elif command == ARROW_LEFT:
+                        game_world.move_player('left')
+                    elif command == ARROW_RIGHT:
+                        game_world.move_player('right')
+                elif command == 'quit':
+                    repl.running = False
+                else:
+                    repl.evaluate(command)
+
+            game_world.render()
+
+    except KeyboardInterrupt:
+        repl.output("\nExiting REPL gracefully.")
 
 def main() -> None:
     """Perform setup, run REPL, and handle input."""
@@ -138,3 +191,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    main_game_loop()
