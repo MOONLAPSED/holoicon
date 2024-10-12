@@ -1,30 +1,156 @@
-import copy
-from abc import ABC, abstractmethod
-from dataclasses import asdict, astuple, dataclass, field
-from struct import Struct
-from types import (
-    CodeType,
-    FrameType,
-    FunctionType,
-    MethodType,
-    ModuleType,
-    TracebackType,
-)
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# STATE_START
+{
+  "current_step": 0
+}
+# STATE_END
+import os
+import sys
+import io
+import re
+import dis
+import ast
+import tokenize
+import importlib
+import pathlib
+import asyncio
+import argparse
+import uuid
+import json
+import struct
+import time
+import hashlib
+import msgpack
+import dis
+import inspect
+import threading
+import logging
+import time
+import shlex
+import shutil
+import uuid
+import datetime
+import argparse
+import ctypes
+import tracemalloc
+from enum import Enum, auto
 from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generic,
-    List,
-    NamedTuple,
-    Optional,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
+    Any, Dict, List, Optional, Union, Callable, TypeVar, Tuple, Generic, Set, Coroutine, Type, NamedTuple
 )
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from asyncio import Queue as AsyncQueue
+from queue import Queue, Empty
+from functools import wraps
+from enum import Enum, auto
+from pathlib import Path
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+tracemalloc.start()
+tracefilter = ("<<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
+snapshot = tracemalloc.take_snapshot()
+excluded_files = [trace.filename for trace in snapshot.traces if trace.filename not in tracefilter]
+for filename in excluded_files:
+    tracemalloc.Filter(False, filename)
+# tracemalloc.Filter(False, "*") uncomment for no debugging
+def display_top(snapshot, key_type='lineno', limit=3):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(True, "<module>"),
+    ))
+    top_stats = snapshot.statistics(key_type)
+    print("Top %s lines" % limit)
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        print("#%s: %s:%s: %.1f KiB"
+              % (index, frame.filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            print('    %s' % line)
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        print("%s other: %.1f KiB" % (len(other), size / 1024))
+    total = sum(stat.size for stat in top_stats)
+    print("Total allocated size: %.1f KiB" % (total / 1024))
+snapshot = tracemalloc.take_snapshot()
+display_top(snapshot)
+# Typing ----------------------------------------------------------
+"""Homoiconism dictates that, upon runtime validation, all objects are code and data.
+To fascilitate; we utilize first class functions and a static typing system."""
+T = TypeVar('T', bound=any) # T for TypeVar, V for ValueVar. Homoicons are T+V.
+V = TypeVar('V', bound=Union[int, float, str, bool, list, dict, tuple, set, object, Callable, type])
+C = TypeVar('C', bound=Callable[..., Any])  # callable 'T'/'V' first class function interface
+DataType = Enum('DataType', 'INTEGER FLOAT STRING BOOLEAN NONE LIST TUPLE') # 'T' vars (stdlib)
+AtomType = Enum('AtomType', 'FUNCTION CLASS MODULE OBJECT') # 'C' vars (homoiconic methods or classes)
+# DECORATORS =========================================================
+def atom(cls: Type[{T, V, C}]) -> Type[{T, V, C}]: # homoicon decorator
+    """Decorator to create a homoiconic atom."""
+    original_init = cls.__init__
+    def new_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        if not hasattr(self, 'id'):
+            self.id = hashlib.sha256(self.__class__.__name__.encode('utf-8')).hexdigest()
 
-T = TypeVar('T')
+    cls.__init__ = new_init
+    return cls
+
+def log(level=logging.INFO):
+    def decorator(func: Callable):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            Logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
+            try:
+                result = await func(*args, **kwargs)
+                Logger.log(level, f"Completed {func.__name__} with result: {result}")
+                return result
+            except Exception as e:
+                Logger.exception(f"Error in {func.__name__}: {str(e)}")
+                raise
+
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            Logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
+            try:
+                result = func(*args, **kwargs)
+                Logger.log(level, f"Completed {func.__name__} with result: {result}")
+                return result
+            except Exception as e:
+                Logger.exception(f"Error in {func.__name__}: {str(e)}")
+                raise
+        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+    return decorator
+
+def validate(cls: Type[T]) -> Type[T]:
+    original_init = cls.__init__
+    sig = inspect.signature(original_init)
+
+    def new_init(self: T, *args: Any, **kwargs: Any) -> None:
+        bound_args = sig.bind(self, *args, **kwargs)
+        for key, value in bound_args.arguments.items():
+            if key in cls.__annotations__:
+                expected_type = cls.__annotations__.get(key)
+                if not isinstance(value, expected_type):
+                    raise TypeError(f"Expected {expected_type} for {key}, got {type(value)}")
+        original_init(self, *args, **kwargs)
+
+    cls.__init__ = new_init
+    return cls
+
+def encode(atom: 'Atom') -> bytes:
+    data = {
+        'tag': atom.tag,
+        'value': atom.value,
+        'children': [encode(child) for child in atom.children],
+        'metadata': atom.metadata
+    }
+    return pickle.dumps(data)
+
+def decode(data: bytes) -> 'Atom':
+    data = pickle.loads(data)
+    atom = Atom(data['tag'], data['value'], [decode(child) for child in data['children']], data['metadata'])
+    return atom
 
 @dataclass
 class GrammarRule:
