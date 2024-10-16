@@ -48,124 +48,11 @@ import linecache
 import tracemalloc
 tracemalloc.start()
 # Specify the files and lines to exclude from tracking
-tracefilter = ("<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
-tracemalloc.BaseFilter(tracefilter)
-def display_top(snapshot, key_type='lineno', limit=3):
-    """Display top memory consuming lines"""
-    filters = [tracemalloc.Filter(False, item) for item in tracefilter]
-    snapshot = snapshot.filter_traces(filters)  # Apply the filters to the snapshot
-    top_stats = snapshot.statistics(key_type)
-    print("Top {} lines".format(limit))
-
-    for index, stat in enumerate(top_stats[:limit], 1):
-        frame = stat.traceback[0]
-        print("#{}: {}:{}: {:.1f} KiB".format(index, frame.filename, frame.lineno, stat.size / 1024))
-        line = linecache.getline(frame.filename, frame.lineno).strip()
-        if line:
-            print('    {}'.format(line))
-    
-    # Show the total size and count of other items
-    other = top_stats[limit:]
-    if other:
-        size = sum(stat.size for stat in other)
-        print("{} other: {:.1f} KiB".format(len(other), size / 1024))
-
-    total = sum(stat.size for stat in top_stats)
-    print("Total allocated size: {:.1f} KiB".format(total / 1024))
-
-# main() ->
+excludeFiles = ["__init__.py"]
+tracemalloc.BaseFilter(
+    excludeFiles
+)
 logger = logging.getLogger(__name__)
-snapshot = tracemalloc.take_snapshot()
-display_top(snapshot)
-# <- end main() (testing main)
-
-# Platform-specific optimizations
-if os.name == 'nt':
-    import win32api
-    import win32process
-
-    def set_process_priority(priority: int):
-        handle = win32api.GetCurrentProcess()
-        win32process.SetPriorityClass(handle, priority)
-    
-    def set_thread_priority(priority: int):
-        handle = win32api.GetCurrentThread()
-        win32process.SetThreadPriority(handle, priority)
-    try:
-        set_process_priority(win32process.REALTIME_PRIORITY_CLASS)
-        set_thread_priority(win32process.THREAD_PRIORITY_TIME_CRITICAL)
-    except Exception as e:
-        logger.warning(f"Failed to set process priority: {e}")
-    finally:
-        logger.info("'nt' platform detected, optimizations applied.")
-
-elif os.name == 'posix':
-    import resource
-
-    def set_process_priority(priority: int):
-        try:
-            os.nice(priority)
-        except PermissionError:
-            logger.warning("Unable to set process priority. Running with default priority.")
-
-#-------------------------------###############################-------------------------------#
-
-class customFormatter(logging.Formatter):
-    grey = "\x1b[38;20m"
-    yellow = "\x1b[33;20m"
-    red = "\x1b[31;20m"
-    bold_red = "\x1b[31;1m"
-    green = "\x1b[32;20m"
-    reset = "\x1b[0m"
-
-    format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
-
-    FORMATS = {
-        logging.DEBUG: grey + format + reset,
-        logging.INFO: green + format + reset,
-        logging.WARNING: yellow + format + reset,
-        logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset
-    }
-
-    def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno, self.format)
-        formatter = logging.Formatter(log_fmt)
-        return formatter.format(record)
-
-def setupLogger(name: str, level: int, datefmt: str, handlers: list):
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-
-    if logger.hasHandlers():
-        logger.handlers.clear()
-
-    for handler in handlers:
-        if not isinstance(handler, logging.Handler):
-            raise ValueError(f"Invalid handler provided: {handler}")
-        handler.setLevel(level)
-        handler.setFormatter(CustomFormatter())
-        logger.addHandler(handler)
-
-    return logger
-
-def logArgs():
-    parser = argparse.ArgumentParser(description="Logger Configuration")
-    parser.add_argument('--log-level', type=str, default='DEBUG', choices=logging._nameToLevel.keys(), help='Set logging level')
-    parser.add_argument('--log-file', type=str, help='Set log file path')
-    parser.add_argument('--log-format', type=str, default='%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)', help='Set log format')
-    parser.add_argument('--log-datefmt', type=str, default='%Y-%m-%d %H:%M:%S', help='Set date format')
-    parser.add_argument('--log-name', type=str, default=__name__, help='Set logger name')
-    return parser.parse_args()
-def parseLargs():
-    args = parse_args()
-    log_level = logging._nameToLevel.get(args.log_level.upper(), logging.DEBUG)
-
-    handlers = [logging.FileHandler(args.log_file)] if args.log_file else [logging.StreamHandler()]
-
-    logger = setup_logger(name=args.log_name, level=log_level, datefmt=args.log_datefmt, handlers=handlers)
-    logger.info("Logger setup complete.")
-
 #-------------------------------###########MIXINS##############-------------------------------#
 
 def load_modules():
@@ -265,20 +152,22 @@ class KnowledgeBase:
 #-------------------------------###############################-------------------------------#
 #-------------------------------########DECORATORS#############-------------------------------#
 #-------------------------------###############################-------------------------------#
-def memoize(func: Callable) -> Callable:
-    return lru_cache(maxsize=None)(func)
 
-def log(level=logging.INFO):
-    def decorator(func):
+
+def log(level: int = logging.INFO):
+    """
+    Logging decorator for functions. Handles both synchronous and asynchronous functions.
+    """
+    def decorator(func: Callable):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
+            logger.log(level, f"Executing async {func.__name__} with args: {args}, kwargs: {kwargs}")
             try:
                 result = await func(*args, **kwargs)
-                logger.log(level, f"Completed {func.__name__} with result: {result}")
+                logger.log(level, f"Completed async {func.__name__} with result: {result}")
                 return result
             except Exception as e:
-                logger.exception(f"Error in {func.__name__}: {e}")
+                logger.exception(f"Error in async {func.__name__}: {e}")
                 raise
 
         @wraps(func)
@@ -294,3 +183,22 @@ def log(level=logging.INFO):
 
         return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
     return decorator
+
+@log()
+def main():
+    with memory_profiling() as snapshot:
+        # Your application logic here
+        # For demonstration, we'll perform a memory-intensive operation
+        dummy_list = [i for i in range(1000000)]
+    
+    if snapshot:
+        display_top(snapshot)
+
+if __name__ == "__main__":
+    # Set process priority (optional)
+    set_process_priority(priority=0)  # Adjust priority as needed
+
+    try:
+        main()
+    except Exception as e:
+        logger.exception(f"Unhandled exception: {e}")
