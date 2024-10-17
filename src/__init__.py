@@ -117,7 +117,7 @@ def memoize(func: Callable) -> Callable:
     return lru_cache(maxsize=None)(func)
 
 @contextmanager
-def memory_profiling(active: bool = True):
+def memoryProfiling(active: bool = True):
     """
     Context manager for memory profiling using tracemalloc.
     Captures allocations made within the context block.
@@ -129,21 +129,33 @@ def memory_profiling(active: bool = True):
         finally:
             snapshot = tracemalloc.take_snapshot()
             tracemalloc.stop()
-            display_top(snapshot)
+            displayTop(snapshot)
     else:
-        yield
-
-def display_top(snapshot, key_type: str = 'lineno', limit: int = 3):
+        yield None
+def timeFunc(func: Callable) -> Callable:
+    """
+    Time execution of a function.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        logger.info(f"Function {func.__name__} took {elapsed_time:.4f} seconds to execute.")
+        return result
+    return wrapper
+def displayTop(snapshot, key_type: str = 'lineno', limit: int = 3):
     """
     Display top memory-consuming lines.
     """
     tracefilter = ("<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
     filters = [tracemalloc.Filter(False, item) for item in tracefilter]
     filtered_snapshot = snapshot.filter_traces(filters)
-    top_stats = filtered_snapshot.statistics(key_type)
+    topStats = filtered_snapshot.statistics(key_type)
 
     result = [f"Top {limit} lines:"]
-    for index, stat in enumerate(top_stats[:limit], 1):
+    for index, stat in enumerate(topStats[:limit], 1):
         frame = stat.traceback[0]
         result.append(f"#{index}: {frame.filename}:{frame.lineno}: {stat.size / 1024:.1f} KiB")
         line = linecache.getline(frame.filename, frame.lineno).strip()
@@ -151,15 +163,13 @@ def display_top(snapshot, key_type: str = 'lineno', limit: int = 3):
             result.append(f"    {line}")
 
     # Show the total size and count of other items
-    other = top_stats[limit:]
+    other = topStats[limit:]
     if other:
         size = sum(stat.size for stat in other)
         result.append(f"{len(other)} other: {size / 1024:.1f} KiB")
 
-    total = sum(stat.size for stat in top_stats)
+    total = sum(stat.size for stat in topStats)
     result.append(f"Total allocated size: {total / 1024:.1f} KiB")
-
-    # Log the memory usage information
     logger.info("\n".join(result))
 
 def log(level: int = logging.INFO):
@@ -177,7 +187,6 @@ def log(level: int = logging.INFO):
             except Exception as e:
                 logger.exception(f"Error in async {func.__name__}: {e}")
                 raise
-
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
@@ -188,34 +197,28 @@ def log(level: int = logging.INFO):
             except Exception as e:
                 logger.exception(f"Error in {func.__name__}: {e}")
                 raise
-
         return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
     return decorator
 #-------------------------------###############################-------------------------------#
-#-------------------------------#########TYPING################-------------------------------#
-#-------------------------------###############################-------------------------------#
-class AtomType(Enum):
-    FUNCTION = auto() # FIRST CLASS FUNCTIONS
-    VALUE = auto()
-    CLASS = auto() # CLASSES ARE FUNCTIONS (FCF: FCC)
-    MODULE = auto() # SimpleNameSpace()(s) are MODULE (~MODULE IS A SNS)
-
-# Example usage of memory profiling
 @log()
 def main():
-    with memory_profiling(active=True):
-        # Your application logic here
-        # For demonstration, we'll perform a memory-intensive operation
-        dummy_list = [i for i in range(1000000)]
-        # You can add more operations here to profile
+    def __init__(self, name: str, age: int):
+        self.snapshot = None
+    with memoryProfiling(active=True) as snapshot:
+        print("Starting memory profiling...")
+        lambda x: x + 1
+        async_function = lambda: asyncio.sleep(2)
+        rwaitable = asyncio.run(async_function())
+        print(type(snapshot))
+        print(snapshot)
+        print("Finished memory profiling.")
 if __name__ == "__main__":
-    # Set process priority (optional)
     if IS_WINDOWS:
         set_process_priority('NORMAL')  # Options: 'IDLE', 'BELOW_NORMAL', 'NORMAL', 'ABOVE_NORMAL', 'HIGH', 'REALTIME'
     elif IS_POSIX:
-        set_process_priority(0)  # Adjust niceness as needed
-    
+        set_process_priority(0)  # Adjust niceness
     try:
         main()
+        logger.info("Main function completed successfully.")
     except Exception as e:
         logger.exception(f"Unhandled exception: {e}")

@@ -149,40 +149,6 @@ class KnowledgeBase:
             # Return a more user-friendly error message
             logger.exception("Query execution error:")
             return f"Error executing query: {str(e)}"
-#-------------------------------###############################-------------------------------#
-#-------------------------------########DECORATORS#############-------------------------------#
-#-------------------------------###############################-------------------------------#
-
-
-def log(level: int = logging.INFO):
-    """
-    Logging decorator for functions. Handles both synchronous and asynchronous functions.
-    """
-    def decorator(func: Callable):
-        @wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            logger.log(level, f"Executing async {func.__name__} with args: {args}, kwargs: {kwargs}")
-            try:
-                result = await func(*args, **kwargs)
-                logger.log(level, f"Completed async {func.__name__} with result: {result}")
-                return result
-            except Exception as e:
-                logger.exception(f"Error in async {func.__name__}: {e}")
-                raise
-
-        @wraps(func)
-        def sync_wrapper(*args, **kwargs):
-            logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
-            try:
-                result = func(*args, **kwargs)
-                logger.log(level, f"Completed {func.__name__} with result: {result}")
-                return result
-            except Exception as e:
-                logger.exception(f"Error in {func.__name__}: {e}")
-                raise
-
-        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
-    return decorator
 
 @log()
 def main():
@@ -195,8 +161,7 @@ def main():
         display_top(snapshot)
 
 if __name__ == "__main__":
-    # Set process priority (optional)
-    set_process_priority(priority=0)  # Adjust priority as needed
+    set_process_priority(priority=0)  # Adjust priority as needed (optional)
 
     try:
         main()
