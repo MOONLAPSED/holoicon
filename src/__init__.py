@@ -5,6 +5,7 @@ import asyncio
 import tracemalloc
 import linecache
 import ctypes
+import argparse
 import resource  # Only used in POSIX
 from contextlib import contextmanager
 from functools import wraps, lru_cache
@@ -43,7 +44,7 @@ def setupLogger(name: str, level: int, datefmt: str, handlers: list):
         if not isinstance(handler, logging.Handler):
             raise ValueError(f"Invalid handler provided: {handler}")
         handler.setLevel(level)
-        handler.setFormatter(CustomFormatter())
+        handler.setFormatter(customFormatter())
         logger.addHandler(handler)
     return logger
 
@@ -201,24 +202,91 @@ def log(level: int = logging.INFO):
     return decorator
 #-------------------------------###############################-------------------------------#
 @log()
-def main():
-    def __init__(self, name: str, age: int):
-        self.snapshot = None
-    with memoryProfiling(active=True) as snapshot:
-        print("Starting memory profiling...")
-        lambda x: x + 1
-        async_function = lambda: asyncio.sleep(2)
-        rwaitable = asyncio.run(async_function())
-        print(type(snapshot))
-        print(snapshot)
-        print("Finished memory profiling.")
+def snapShot(func: Callable) -> Callable:
+    """
+    Capture memory snapshots before and after function execution. OBJECT not a wrapper
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        tracemalloc.start()
+        result = func(*args, **kwargs)
+        snapshot = tracemalloc.take_snapshot()
+        tracemalloc.stop()
+        displayTop(snapshot)
+        return result
+    return wrapper
+
+class main():
+    """
+    Main function to demonstrate the usage of the decorators
+    """
+    @classmethod
+    @log()
+    async def asyncFunction(cls, arg):
+        logger.info(f"Async function called with arg: {arg}")
+        return arg
+    @classmethod
+    @log()
+    def syncFunction(cls, arg):
+        logger.info(f"Sync function called with arg: {arg}")
+        return arg
+
+    @classmethod
+    async def asyncMain(cls):
+        logger.info("Starting async main")
+        result = await cls.asyncFunction("asyncArg")
+        logger.info(f"Async result: {result}")
+    
+    @classmethod
+    def syncMain(cls):
+        logger.info("Starting sync main")
+        result = cls.syncFunction("syncArg")
+        logger.info(f"Sync result: {result}")
+    
+    runAsync = lambda f: asyncio.run(f()) if asyncio.iscoroutinefunction(f) else f()
+
 if __name__ == "__main__":
+    """main runtime for CLI, logging, and initialization."""
+    args = logArgs()  # Parse logging arguments
+    
     if IS_WINDOWS:
-        set_process_priority('NORMAL')  # Options: 'IDLE', 'BELOW_NORMAL', 'NORMAL', 'ABOVE_NORMAL', 'HIGH', 'REALTIME'
+    # windowsOptions = ['IDLE', 'BELOW_NORMAL', 'NORMAL', 'ABOVE_NORMAL',
+    #   'HIGH', 'REALTIME']
+        set_process_priority('NORMAL')
     elif IS_POSIX:
-        set_process_priority(0)  # Adjust niceness
+        set_process_priority(0)
+    
     try:
-        main()
+        logger = setupLogger(args.log_name, args.log_level, args.log_datefmt, [logging.StreamHandler()])
+        m = main
+        
+        def print_help():
+            print("Available commands:")
+            print("  async - Run async function")
+            print("  sync  - Run sync function")
+            print("  help  - Display this help message")
+            print("  quit  - Exit the program")
+
+        print_help()
+        while True:
+            try:
+                command = input("Enter command: ").lower().strip()
+                if command in ('async', 'a'):
+                    print("Running async function...")
+                    m.runAsync(m.asyncMain)
+                elif command in ('sync', 's'):
+                    print("Running sync function...")
+                    m.syncMain()
+                elif command in ('help', 'h'):
+                    print_help()
+                elif command in ('quit', 'q', 'exit'):
+                    print("Exiting program...")
+                    break
+                else:
+                    print("Invalid command. Type 'help' for available commands.")
+            except KeyboardInterrupt:
+                print("\nProgram interrupted. Type 'quit' to exit.")
+        
         logger.info("Main function completed successfully.")
     except Exception as e:
         logger.exception(f"Unhandled exception: {e}")
