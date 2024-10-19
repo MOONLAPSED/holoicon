@@ -176,6 +176,7 @@ class GrammarRule:
 
 
 class Atom(ABC):
+    __slots__ = ('_id', '_value', '_type', '_metadata', '_children', '_parent')
     """
     Abstract Base Class for all Atom types.
     
