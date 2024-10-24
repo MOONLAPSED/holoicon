@@ -1,14 +1,19 @@
+import asyncio
 import json
-import requests
+import http.client
+import urllib.parse
 import pathlib
 from pathlib import Path
 from typing import Dict, Optional, Set, Tuple, List, Union
 from dataclasses import dataclass, field
+from array import array
+import struct
+from struct import calcsize
+import math
 import time
 import importlib.util
 import sys
 import os
-import struct
 
 @dataclass
 class MemoryCell:
@@ -229,14 +234,14 @@ class MemoryHead:
 @dataclass
 class EmbeddingCell(MemoryCell):
     """Extends MemoryCell to store embeddings and metadata"""
-    embedding: Optional[np.ndarray] = None
+    embedding: Optional[array] = None
     metadata: Dict = field(default_factory=dict)
     
     def serialize(self) -> bytes:
         """Serialize embedding and metadata to bytes"""
         data = {
             'value': self.value.hex(),
-            'embedding': self.embedding.tolist() if self.embedding is not None else None,
+            'embedding': list(self.embedding) if self.embedding is not None else None,
             'metadata': self.metadata
         }
         return json.dumps(data).encode()
@@ -247,7 +252,7 @@ class EmbeddingCell(MemoryCell):
         parsed = json.loads(data)
         cell = cls(bytes.fromhex(parsed['value']))
         if parsed['embedding']:
-            cell.embedding = np.array(parsed['embedding'])
+            cell.embedding = array('f', parsed['embedding'])
         cell.metadata = parsed['metadata']
         return cell
 
@@ -255,66 +260,79 @@ class EmbeddingSegment(MemorySegment):
     """Extends MemorySegment to handle embeddings"""
     def __init__(self):
         super().__init__()
-        self.embedding_index: Dict[int, np.ndarray] = {}
+        self.embedding_index: Dict[int, array] = {}
         
-    def write(self, address: int, value: bytes, embedding: Optional[np.ndarray] = None):
+    def write(self, address: int, value: bytes, embedding: Optional[array] = None):
         """Write value and optional embedding"""
         cell = EmbeddingCell(value, embedding)
         self.cells[address] = cell
         if embedding is not None:
             self.embedding_index[address] = embedding
             
-    def search_similar(self, query_embedding: np.ndarray, top_k: int = 5) -> List[tuple]:
+    def search_similar(self, query_embedding: array, top_k: int = 5) -> List[tuple]:
         """Find most similar embeddings using cosine similarity"""
         if not self.embedding_index:
             return []
             
+        def cosine_similarity(a: array, b: array) -> float:
+            dot_product = sum(x * y for x, y in zip(a, b))
+            norm_a = math.sqrt(sum(x * x for x in a))
+            norm_b = math.sqrt(sum(x * x for x in b))
+            return dot_product / (norm_a * norm_b)
+            
         similarities = []
         for addr, emb in self.embedding_index.items():
-            similarity = np.dot(query_embedding, emb) / (np.linalg.norm(query_embedding) * np.linalg.norm(emb))
+            similarity = cosine_similarity(query_embedding, emb)
             similarities.append((addr, similarity))
             
         return sorted(similarities, key=lambda x: x[1], reverse=True)[:top_k]
 
 class InferenceHead(MemoryHead):
-    """Extends MemoryHead with embedding and inference capabilities"""
-    def __init__(self, vmem: 'VirtualMemoryFS', ollama_base_url: str = "http://localhost:11434"):
+    def __init__(self, vmem: 'VirtualMemoryFS', ollama_host: str = "localhost", ollama_port: int = 11434):
         super().__init__(vmem)
-        self.ollama_url = ollama_base_url
+        self.ollama_host = ollama_host
+        self.ollama_port = ollama_port
         self._init_embedding_segments()
-        
+
     def _init_embedding_segments(self):
-        """Initialize segments with embedding capability"""
+        """Initialize segments as EmbeddingSegments"""
         for addr in range(0x100):
-            if addr not in self.vmem._segments:
-                self.vmem._segments[addr] = EmbeddingSegment()
-                
-    async def generate_embedding(self, text: str, model: str = "llama2") -> np.ndarray:
+            self.vmem._segments[addr] = EmbeddingSegment()
+
+    async def generate_embedding(self, text: str, model: str = "llama3.1") -> array:
         """Generate embedding using Ollama API"""
-        response = requests.post(
-            f"{self.ollama_url}/api/embeddings",
-            json={"model": model, "prompt": text}
-        )
-        embedding_data = response.json()
-        return np.array(embedding_data['embedding'])
+        conn = http.client.HTTPConnection(self.ollama_host, self.ollama_port)
+        headers = {'Content-Type': 'application/json'}
+        body = json.dumps({"model": model, "prompt": text})
         
-    async def infer(self, prompt: str, model: str = "llama2", context: Optional[List[bytes]] = None) -> str:
+        conn.request("POST", "/api/embeddings", body, headers)
+        response = conn.getresponse()
+        embedding_data = json.loads(response.read().decode())
+        conn.close()
+        
+        # Convert to standard library array instead of numpy
+        return array('f', embedding_data['embedding'])
+
+    async def infer(self, prompt: str, model: str = "llama3.1", context: Optional[List[bytes]] = None) -> str:
         """Run inference using Ollama API with optional context"""
-        # Prepare context from memory if provided
         context_text = ""
         if context:
             context_text = "\n".join([bytes.decode('utf-8', errors='ignore') for bytes in context])
             
-        # Combine context and prompt
         full_prompt = f"{context_text}\n{prompt}" if context_text else prompt
         
-        response = requests.post(
-            f"{self.ollama_url}/api/generate",
-            json={"model": model, "prompt": full_prompt}
-        )
-        return response.json()['response']
+        conn = http.client.HTTPConnection(self.ollama_host, self.ollama_port)
+        headers = {'Content-Type': 'application/json'}
+        body = json.dumps({"model": model, "prompt": full_prompt})
         
-    def write_with_embedding(self, address: int, value: bytes, text: Optional[str] = None):
+        conn.request("POST", "/api/generate", body, headers)
+        response = conn.getresponse()
+        result = json.loads(response.read().decode())
+        conn.close()
+        
+        return result['response']
+       
+    async def write_with_embedding(self, address: int, value: bytes, text: Optional[str] = None):
         """Write value with automatically generated embedding"""
         if text:
             embedding = await self.generate_embedding(text)
@@ -329,8 +347,8 @@ class InferenceHead(MemoryHead):
         else:
             # Fallback to normal write if segment doesn't support embeddings
             segment.write(address & 0xFF, value)
-            
-    def search_similar_across_segments(self, query_text: str, top_k: int = 5) -> List[tuple]:
+
+    async def search_similar_across_segments(self, query_text: str, top_k: int = 5) -> List[tuple]:
         """Search for similar content across all segments"""
         query_embedding = await self.generate_embedding(query_text)
         results = []
@@ -342,35 +360,53 @@ class InferenceHead(MemoryHead):
                 
         return sorted(results, key=lambda x: x[2], reverse=True)[:top_k]
 
-
-def main():
+async def main():
     vmem = VirtualMemoryFS()
-    head = MemoryHead(vmem)
-
+    inference_head = InferenceHead(vmem)
+    query_count = 0
+    max_queries = 10
     # Write some values while tracking propagation
-    head.write(0x1234, b'\x42')
+    inference_head.write(0x1234, b'\x42')
+    value = inference_head.read(0x1234)
+    info = inference_head.get_wavefront_info()
+    print(info)    
+    test_prompts = [
+        "What is memory?",
+        "Describe a wave",
+        "Tell me about embeddings",
+        "How do neural networks work?",
+        "Explain quantum computing"
+    ]
+    for prompt in test_prompts:
+        if query_count >= max_queries:
+            print(f"Reached maximum query limit of {max_queries}")
+            break
+        try:
+            print(f"\nProcessing prompt: {prompt}")
+            await inference_head.write_with_embedding(0x1234 + query_count, b'\x42', prompt)
+            results = await inference_head.search_similar_across_segments(prompt)
+            print(f"Results for {prompt}: {results}")
+            query_count += 2  # Counts as 2 queries (embedding + search)
+        except ConnectionRefusedError:
+            print(f"Connection to Ollama failed on query {query_count + 1}")
+            break
+        except Exception as e:
+            print(f"Error on query {query_count + 1}: {str(e)}")
+            break
+    print(f"\nCompleted {query_count} queries to Ollama")
+    # Example async operations
+    await inference_head.write_with_embedding(0x1234, b'\x42', "test text")
+    results = await inference_head.search_similar_across_segments("query text")
+    print(results)
 
-    # Read values with wavefront tracking
-    value = head.read(0x1234)
-
-    # Get information about the wavefront
-    info = head.get_wavefront_info()
-    print(info)
-
-# Example usage
 if __name__ == "__main__":
     vmem = VirtualMemoryFS()
-    
     # Write some test values
     vmem.write(0x1234, b'\x42')
     vmem.write(0x1235, b'\xFF')
-    
     # Read values back
     print(f"Value at 0x1234: {vmem.read(0x1234).hex()}")
     print(f"Value at 0x1235: {vmem.read(0x1235).hex()}")
-    
     # Dump a memory segment
     print(f"Memory segment 0x1234-0x1236: {vmem.dump_segment(0x1234, 2).hex()}")
-
-    main()
-    
+    asyncio.run(main())
