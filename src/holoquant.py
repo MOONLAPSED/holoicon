@@ -7,10 +7,6 @@ from datetime import datetime
 import json
 from uuid import UUID, uuid4
 
-# Type variables for generic programming
-T = TypeVar('T')
-S = TypeVar('S', bound='Serializable')
-
 class Serializable(Protocol):
     """Protocol defining the serialization contract.
     This makes the nominative property explicit at the type level.
@@ -110,6 +106,7 @@ class DataType(Enum):
 """Homoiconism dictates that, upon runtime validation, all objects are code and data.
 To fascilitate; we utilize first class functions and a static typing system."""
 T = TypeVar('T', bound=any) # T for TypeVar, V for ValueVar. Homoicons are T+V.
+S = TypeVar('S', bound='Serializable') # complex, 64bit+ objects
 V = TypeVar('V', bound=Union[int, float, str, bool, list, dict, tuple, set, object, Callable, type])
 C = TypeVar('C', bound=Callable[..., Any])  # callable 'T'/'V' first class function interface
 DataType = Enum('DataType', 'INTEGER FLOAT STRING BOOLEAN NONE LIST TUPLE') # 'T' vars (stdlib)
