@@ -1028,11 +1028,8 @@ class TokenSpace(Atom, ABC):
 # these abstract classes. They form the basis of specialized runtime environments and
 # token management systems within an application.
 
-class QuantumAtomState(Enum):
-    SUPERPOSITION = "superposition"
-    ENTANGLED = "entangled"
-    COLLAPSED = "collapsed"
-    DECOHERENT = "decoherent"
+# Quantum typing
+QuantumAtomState = Enum('QuantumAtomState', ['SUPERPOSITION', 'ENTANGLED', 'COLLAPSED', 'DECOHERENT'])
 
 @dataclass
 class QuantumAtomMetadata:
