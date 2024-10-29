@@ -4,7 +4,41 @@
 {
   "current_step": 0
 }
+"""
+We can assume that imperative deterministic source code, such as this file written in Python, is capable of reasoning about non-imperative non-deterministic source code as if it were a defined and known quantity. This is akin to nesting a function with a value in an S-Expression.
+
+In order to expect any runtime result, we must assume that a source code configuration exists which will yield that result given the input.
+
+The source code configuration is the set of all possible configurations of the source code. It is the union of the possible configurations of the source code.
+
+Imperative programming specifies how to perform tasks (like procedural code), while non-imperative (e.g., functional programming in LISP) focuses on what to compute. We turn this on its head in our imperative non-imperative runtime by utilizing nominative homoiconistic reflection to create a runtime where dynamical source code is treated as both static and dynamic.
+
+"Nesting a function with a value in an S-Expression":
+In the code, we nest the input value within different function expressions (configurations).
+Each function is applied to the input to yield results, mirroring the collapse of the wave function to a specific state upon measurement.
+
+This nominative homoiconistic reflection combines the expressiveness of S-Expressions with the operational semantics of Python. In this paradigm, source code can be constructed, deconstructed, and analyzed in real-time, allowing for dynamic composition and execution. Each code configuration (or state) is akin to a function in an S-Expression that can be encapsulated, manipulated, and ultimately evaluated in the course of execution.
+
+To illustrate, consider a Python function as a generalized S-Expression. This function can take other functions and values as arguments, forming a nested structure. Each invocation changes the system's state temporarily, just as evaluating an S-Expression alters the state of the LISP interpreter.
+
+In essence, our approach ensures that:
+
+    1. **Composition**: Functions (or code segments) can be composed at runtime, akin to how S-Expressions can nest functions and values.
+    2. **Evaluation**: Upon invocation, these compositions are evaluated, reflecting the current configuration of the runtime.
+    3. **Reflection and Modification**: The runtime can reflect on its structure and make modifications dynamically, which allows it to reason about its state and adapt accordingly.
+    4. **Identity Preservation**: The runtime maintains its identity, allowing for a consistent state across different configurations.
+    5. **Non-Determinism**: The runtime can exhibit non-deterministic behavior, as it can transition between different configurations based on the input and the code's structure. This is akin to the collapse of the wave function in quantum mechanics, or modeling it on classical hardware via multi-instantaneous multi-threading.
+    6. **State Preservation**: The runtime can maintain its state across different configurations, allowing for a consistent execution path.
+
+This synthesis of static and dynamic code concepts is akin to the Copenhagen interpretation of quantum mechanics, where the observation (or execution) collapses the superposition of states (or configurations) into a definite outcome based on the input.
+
+Ultimately, this model provides a flexible approach to managing and executing complex code structures dynamically while maintaining the clarity and compositional advantages traditionally seen in non-imperative, functional paradigms like LISP, drawing inspiration from lambda calculus and functional programming principles.
+
+The most advanced concept of all in this ontology is the dynamic rewriting of source code at runtime. Source code rewriting is achieved with a special runtime `Atom()` class with 'modified quine' behavior. This special Atom, aside from its specific function and the functions obligated to it by polymorphism, will always rewrite its own source code but may also perform other actions as defined by the source code in the runtime which invoked it. They can be nested in S-expressions and are homoiconic with all other source code. These modified quines can be used to dynamically create new code at runtime, which can be used to extend the source code in a way that is not known at the start of the program. This is the most powerful feature of the system and allows for the creation of a runtime of runtimes dynamically limited by hardware and the operating system.
+"""
 # STATE_END
+#-------------------------------#####PLATFORM&LOGGING###########-------------------------------#
+# platforms: Ubuntu-22.04LTS (posix), Windows-11 (nt)
 import asyncio
 import inspect
 import json
@@ -38,163 +72,221 @@ from queue import Queue, Empty
 from asyncio import Queue as AsyncQueue
 import ctypes
 import ast
-import tokenize
 import io
 import importlib as _importlib
 from importlib.util import spec_from_file_location, module_from_spec
 import re
 import dis
-import tokenize
 import linecache
 import tracemalloc
-tracemalloc.start()
-# Specify the files and lines to exclude from tracking
-excludeFiles = ["__init__.py"]
-tracemalloc.BaseFilter(
-    excludeFiles
-)
-# platforms: Ubuntu-22.04LTS (posix), Windows-11 (nt)
-#-------------------------------#####PLATFORM&LOGGING###########-------------------------------#
-class customFormatter(logging.Formatter):
-    grey = "\x1b[38;20m"
-    yellow = "\x1b[33;20m"
-    red = "\x1b[31;20m"
-    bold_red = "\x1b[31;1m"
-    green = "\x1b[32;20m"
-    reset = "\x1b[0m"
-    format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
-    FORMATS = {
-        logging.DEBUG: grey + format + reset,
-        logging.INFO: green + format + reset,
-        logging.WARNING: yellow + format + reset,
-        logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset
-    }
-    def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno, self.format)
-        formatter = logging.Formatter(log_fmt)
-        return formatter.format(record)
-def setupLogger(name: str, level: int, datefmt: str, handlers: list):
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-
-    if logger.hasHandlers():
-        logger.handlers.clear()
-    for handler in handlers:
-        if not isinstance(handler, logging.Handler):
-            raise ValueError(f"Invalid handler provided: {handler}")
-        handler.setLevel(level)
-        handler.setFormatter(customFormatter())
-        logger.addHandler(handler)
-    return logger
-def logArgs():
-    parser = argparse.ArgumentParser(description="Logger Configuration")
-    parser.add_argument('--log-level', type=str, default='DEBUG', choices=logging._nameToLevel.keys(), help='Set logging level')
-    parser.add_argument('--log-file', type=str, help='Set log file path')
-    parser.add_argument('--log-format', type=str, default='%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)', help='Set log format')
-    parser.add_argument('--log-datefmt', type=str, default='%Y-%m-%d %H:%M:%S', help='Set date format')
-    parser.add_argument('--log-name', type=str, default=__name__, help='Set logger name')
-    return parser.parse_args()
-def parseLargs():
-    args = parse_args()
-    log_level = logging._nameToLevel.get(args.log_level.upper(), logging.DEBUG)
-
-    handlers = [logging.FileHandler(args.log_file)] if args.log_file else [logging.StreamHandler()]
-
-    logger = setup_logger(name=args.log_name, level=log_level, datefmt=args.log_datefmt, handlers=handlers)
-    logger.info("Logger setup complete.")
-logger = logging.getLogger(__name__)
-IS_WINDOWS = os.name == 'nt'
-IS_POSIX = os.name == 'posix'
-if IS_WINDOWS:
+# ----------------non-homoiconic pre-runtime "ADMIN-SCOPED" source code-------------------------#
+if os.name == 'posix':
+    from ctypes import cdll
+    logger = logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+elif os.name == 'nt':
     from ctypes import windll
     from ctypes.wintypes import DWORD, HANDLE
-elif IS_POSIX:
-    import resource  # Only used in POSIX
-    from ctypes import CDLL, c_int, c_void_p, byref
-    from ctypes.util import find_library
+    logger = logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+IS_WINDOWS = os.name == 'nt'
+IS_POSIX = os.name == 'posix'
+class ExcludeFilter:
+    def __init__(self, exclude_files):
+        self.exclude_files = exclude_files
 
-def set_process_priority(priority: int):
+    def filter(self, traceback, event, tb):
+        for frame in tb:
+            if frame.filename in self.exclude_files:
+                return False
+        return True
+    #tracefilter = ("<<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
+    #tracemalloc.Filter(False, trace for trace in tracemalloc.get_traced_memory() if trace.traceback[0].filename not in tracefilter)
+def memoize(func: Callable) -> Callable:
+    """
+    Caching decorator using LRU cache with unlimited size.
+    """
+    return lru_cache(maxsize=None)(func)
+@contextmanager
+def memoryProfiling(active: bool = True):
+    """
+    Context manager for memory profiling using tracemalloc.
+    Captures allocations made within the context block.
+    """
+    if active:
+        tracemalloc.start()
+        try:
+            yield
+        finally:
+            snapshot = tracemalloc.take_snapshot()
+            tracemalloc.stop()
+            displayTop(snapshot)
+    else:
+        yield None
+def timeFunc(func: Callable) -> Callable:
+    """
+    Time execution of a function.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        logger.info(f"Function {func.__name__} took {elapsed_time:.4f} seconds to execute.")
+        return result
+    return wrapper
+class CustomFormatter(logging.Formatter):
+    FORMATS = {
+        logging.DEBUG: "\x1b[38;20m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
+        logging.INFO: "\x1b[32;20m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
+        logging.WARNING: "\x1b[33;20m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
+        logging.ERROR: "\x1b[31;20m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
+        logging.CRITICAL: "\x1b[31;1m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
+    }
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno, self._fmt)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+def setup_logger(name: str, level: int = logging.INFO, log_file: Optional[str] = None):
+    logger = logging.getLogger(name)
+    if logger.hasHandlers():
+        return logger  # Avoid multiple handler additions
+    formatter = CustomFormatter()
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    logger.setLevel(level)
+    return logger
+def log(level=logging.INFO):
+    def decorator(func: Callable):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            Logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
+            try:
+                result = await func(*args, **kwargs)
+                Logger.log(level, f"Completed {func.__name__} with result: {result}")
+                return result
+            except Exception as e:
+                Logger.exception(f"Error in {func.__name__}: {str(e)}")
+                raise
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            Logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
+            try:
+                result = func(*args, **kwargs)
+                Logger.log(level, f"Completed {func.__name__} with result: {result}")
+                return result
+            except Exception as e:
+                Logger.exception(f"Error in {func.__name__}: {str(e)}")
+                raise
+        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+    return decorator
+@log()
+def snapShot(func: Callable) -> Callable:
+    """
+    Capture memory snapshots before and after function execution. OBJECT not a wrapper
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        tracemalloc.start()
+        result = func(*args, **kwargs)
+        snapshot = tracemalloc.take_snapshot()
+        tracemalloc.stop()
+        displayTop(snapshot)
+        return result
+    return wrapper
+def displayTop(snapshot, key_type: str = 'lineno', limit: int = 3):
+    """
+    Display top memory-consuming lines.
+    """
+    tracefilter = ("<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
+    filters = [tracemalloc.Filter(False, item) for item in tracefilter]
+    filtered_snapshot = snapshot.filter_traces(filters)
+    topStats = filtered_snapshot.statistics(key_type)
+    result = [f"Top {limit} lines:"]
+    for index, stat in enumerate(topStats[:limit], 1):
+        frame = stat.traceback[0]
+        result.append(f"#{index}: {frame.filename}:{frame.lineno}: {stat.size / 1024:.1f} KiB")
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            result.append(f"    {line}")
+    # Show the total size and count of other items
+    other = topStats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        result.append(f"{len(other)} other: {size / 1024:.1f} KiB")
+    total = sum(stat.size for stat in topStats)
+    result.append(f"Total allocated size: {total / 1024:.1f} KiB")
+    logger.info("\n".join(result))
+T = TypeVar('T')
+def validate(cls: Type[T]) -> Type[T]:
+    original_init = cls.__init__
+    sig = inspect.signature(original_init)
+    def new_init(self: T, *args: Any, **kwargs: Any) -> None:
+        bound_args = sig.bind(self, *args, **kwargs)
+        for key, value in bound_args.arguments.items():
+            if key in cls.__annotations__:
+                expected_type = cls.__annotations__.get(key)
+                if not isinstance(value, expected_type):
+                    raise TypeError(f"Expected {expected_type} for {key}, got {type(value)}")
+        original_init(self, *args, **kwargs)
+    cls.__init__ = new_init
+    return cls
+def get_lib_handle(lib_name):
+    """Find the library handle on Windows."""
+    lib_path = ctypes.util.find_library(lib_name)
+    if lib_path:
+        return windll.LoadLibrary(lib_name)
+    else:
+        raise FileNotFoundError(f"Library '{lib_name}' not found")
+def set_process_priority(priority: str) -> None:
     """
     Set the process priority based on the operating system.
     """
+    priority_classes = {
+        'IDLE': 0x40,
+        'BELOW_NORMAL': 0x4000,
+        'NORMAL': 0x20,
+        'ABOVE_NORMAL': 0x8000,
+        'HIGH': 0x80,
+        'REALTIME': 0x100
+    }
     if IS_WINDOWS:
         try:
-            # Define priority classes
-            priority_classes = {
-                'IDLE': 0x40,
-                'BELOW_NORMAL': 0x4000,
-                'NORMAL': 0x20,
-                'ABOVE_NORMAL': 0x8000,
-                'HIGH': 0x80,
-                'REALTIME': 0x100
-            }
-            # Load necessary Windows APIs using ctypes
-            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel32 = WinDLL('kernel32', use_last_error=True)
             handle = kernel32.GetCurrentProcess()
             if not kernel32.SetPriorityClass(handle, priority_classes.get(priority, 0x20)):
                 raise ctypes.WinError(ctypes.get_last_error())
-            logger.info(f"Set Windows process priority to {priority}.")
         except Exception as e:
-            logger.warning(f"Failed to set process priority on Windows: {e}")
+            logging.warning(f"Failed to set process priority on Windows: {e}")
     elif IS_POSIX:
         try:
-            # os.nice increments the niceness of a process by the specified amount.
-            current_nice = os.nice(0)  # Get current niceness
-            os.nice(priority)  # Increment niceness by priority
-            logger.info(f"Adjusted POSIX process niceness by {priority}. Current niceness: {current_nice + priority}.")
-        except PermissionError:
-            logger.warning("Permission denied: Unable to set process niceness.")
+            os.nice(priority_classes.get(priority, 0))
         except Exception as e:
-            logger.warning(f"Failed to set process niceness on POSIX: {e}")
-    else:
-        logger.warning("Unsupported operating system for setting process priority.")
-#-------------------------------########DECORATORS#############-------------------------------#
-"""
-We can assume that imperative deterministic source code, such as this file written in Python, is capable of reasoning about non-imperative non-deterministic source code as if it were a defined and known quantity. This is akin to nesting a function with a value in an S-Expression.
-
-In order to expect any runtime result, we must assume that a source code configuration exists which will yield that result given the input.
-
-The source code configuration is the set of all possible configurations of the source code. It is the union of the possible configurations of the source code.
-
-Imperative programming specifies how to perform tasks (like procedural code), while non-imperative (e.g., functional programming in LISP) focuses on what to compute. We turn this on its head in our imperative non-imperative runtime by utilizing nominative homoiconistic reflection to create a runtime where dynamical source code is treated as both static and dynamic.
-
-"Nesting a function with a value in an S-Expression":
-In the code, we nest the input value within different function expressions (configurations).
-Each function is applied to the input to yield results, mirroring the collapse of the wave function to a specific state upon measurement.
-
-This nominative homoiconistic reflection combines the expressiveness of S-Expressions with the operational semantics of Python. In this paradigm, source code can be constructed, deconstructed, and analyzed in real-time, allowing for dynamic composition and execution. Each code configuration (or state) is akin to a function in an S-Expression that can be encapsulated, manipulated, and ultimately evaluated in the course of execution.
-
-To illustrate, consider a Python function as a generalized S-Expression. This function can take other functions and values as arguments, forming a nested structure. Each invocation changes the system's state temporarily, just as evaluating an S-Expression alters the state of the LISP interpreter.
-
-In essence, our approach ensures that:
-
-1. **Composition**: Functions (or code segments) can be composed at runtime, akin to how S-Expressions can nest functions and values.
-2. **Evaluation**: Upon invocation, these compositions are evaluated, reflecting the current configuration of the runtime.
-3. **Reflection and Modification**: The runtime can reflect on its structure and make modifications dynamically, which allows it to reason about its state and adapt accordingly.
-4. **Identity Preservation**: The runtime maintains its identity, allowing for a consistent state across different configurations.
-5. **Non-Determinism**: The runtime can exhibit non-deterministic behavior, as it can transition between different configurations based on the input and the code's structure. This is akin to the collapse of the wave function in quantum mechanics, or modeling it on classical hardware via multi-instantaneous multi-threading.
-6. **State Preservation**: The runtime can maintain its state across different configurations, allowing for a consistent execution path.
-
-This synthesis of static and dynamic code concepts is akin to the Copenhagen interpretation of quantum mechanics, where the observation (or execution) collapses the superposition of states (or configurations) into a definite outcome based on the input.
-
-Ultimately, this model provides a flexible approach to managing and executing complex code structures dynamically while maintaining the clarity and compositional advantages traditionally seen in non-imperative, functional paradigms like LISP, drawing inspiration from lambda calculus and functional programming principles.
-
-The most advanced concept of all in this ontology is the dynamic rewriting of source code at runtime. Source code rewriting is achieved with a special runtime `Atom()` class with 'modified quine' behavior. This special Atom, aside from its specific function and the functions obligated to it by polymorphism, will always rewrite its own source code but may also perform other actions as defined by the source code in the runtime which invoked it. They can be nested in S-expressions and are homoiconic with all other source code. These modified quines can be used to dynamically create new code at runtime, which can be used to extend the source code in a way that is not known at the start of the program. This is the most powerful feature of the system and allows for the creation of a runtime of runtimes dynamically limited by hardware and the operating system.
-"""
-# non-homoiconic pre-runtime "ADMIN-SCOPED" source code:
+            logging.warning(f"Failed to set process priority on Linux: {e}")
 @dataclass
 class RuntimeState:
     current_step: int = 0
     variables: Dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
-    IS_POSIX = os.name == 'posix'
-    IS_WINDOWS = not IS_POSIX  # Assume Windows if WSL is not detected
-    # platforms: Ubuntu-22.04LTS, Windows-11
-    if os.name == 'posix':
-        from ctypes import cdll
-    elif os.name == 'nt':
-        from ctypes import windll
+    @classmethod
+    def platform(cls):
+        if IS_POSIX:
+            from ctypes import cdll
+        elif IS_WINDOWS:
+            from ctypes import windll
+            from ctypes.wintypes import DWORD, HANDLE
+        try:
+            state = cls()
+            cls.ExcludeFilter = ExcludeFilter([])
+            tracemalloc.start()
+            return state
+        except Exception as e:
+            logging.warning(f"Failed to initialize runtime state: {e}")
+            return None
 @dataclass
 class AppState:
     pdm_installed: bool = False
@@ -205,30 +297,35 @@ class AppState:
     tests_passed: bool = False
     benchmarks_run: bool = False
     pre_commit_installed: bool = False
+    def __init__(self):
+        self.state = RuntimeState.platform()
+        self.state.current_step = 0
+        self.state.variables = {}
+        self.state.timestamp = datetime.now()
 @dataclass
 class FilesystemState:
-    allowed_root: Path = field(init=False)
+    allowed_root: str = field(init=False)
     def __post_init__(self):
         try:
-            self.allowed_root = Path(__file__).resolve().parent
-            if not any(self.allowed_root.iterdir()):
+            self.allowed_root = os.path.dirname(os.path.realpath(__file__))
+            if not any(os.listdir(self.allowed_root)):
                 raise FileNotFoundError(f"Allowed root directory empty: {self.allowed_root}")
             logging.info(f"Allowed root directory found: {self.allowed_root}")
         except Exception as e:
             logging.error(f"Error initializing FilesystemState: {e}")
             raise
-    def safe_remove(self, path: Path):
+    def safe_remove(self, path: str):
         """Safely remove a file or directory, handling platform-specific issues."""
         try:
-            path = path.resolve()
-            if not path.is_relative_to(self.allowed_root):
+            path = os.path.abspath(path)
+            if not os.path.commonpath([self.allowed_root, path]) == self.allowed_root:
                 logging.error(f"Attempt to delete outside allowed directory: {path}")
                 return
-            if path.is_dir():
-                shutil.rmtree(path)
+            if os.path.isdir(path):
+                os.rmdir(path)
                 logging.info(f"Removed directory: {path}")
             else:
-                path.unlink()
+                os.remove(path)
                 logging.info(f"Removed file: {path}")
         except (FileNotFoundError, PermissionError, OSError) as e:
             logging.error(f"Error removing path {path}: {e}")
@@ -244,11 +341,16 @@ class FilesystemState:
                 await task()
             except Exception as e:
                 logging.error(f"Error executing task: {e}")
-    async def run_command_async(command: str, shell: bool = False, timeout: int = 120):
+    async def run_command_async(self, command: str, shell: bool = False, timeout: int = 120):
         logging.info(f"Running command: {command}")
         split_command = shlex.split(command, posix=(os.name == 'posix'))
         try:
-            process = await asyncio.create_subprocess_exec(*split_command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, shell=shell)
+            process = await asyncio.create_subprocess_exec(
+                *split_command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                shell=shell
+            )
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             return {
                 "return_code": process.returncode,
@@ -286,7 +388,7 @@ class SecurityContext:
             "namespace": namespace,
             "operation": operation,
             "success": success,
-            "timestamp": asyncio.get_event_loop().time()
+            "timestamp": datetime.now().timestamp()
         })
 class RuntimeNamespace:
     def __init__(self, name: str, parent: Optional['RuntimeNamespace'] = None):
@@ -295,6 +397,7 @@ class RuntimeNamespace:
         self._children: Dict[str, 'RuntimeNamespace'] = {}
         self._content = SimpleNamespace()
         self._security_context: Optional[SecurityContext] = None
+        self.available_modules: Dict[str, ModuleType] = {}  # Store available modules here
     @property
     def full_path(self) -> str:
         if self._parent:
@@ -312,6 +415,24 @@ class RuntimeNamespace:
         if child and len(parts) > 1:
             return child.get_child(parts[1])
         return None
+    def load_modules(self):
+        """Load available modules into the namespace."""
+        try:
+            for path in pathlib.Path(__file__).parent.glob("*.py"):
+                if path.name.startswith("_"):
+                    continue
+                module_name = path.stem
+                spec = spec_from_file_location(module_name, path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"Cannot load module {module_name}")
+                module = module_from_spec(spec)
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
+                self.available_modules[module_name] = module  # Store in the namespace
+            logging.info("Modules loaded successfully.")
+        except Exception as e:
+            logging.error(f"Error importing internal modules: {e}")
+            sys.exit(1)
 class RuntimeManager:
     def __init__(self):
         self.root = RuntimeNamespace("root")
@@ -325,7 +446,7 @@ class RuntimeManager:
         try:
             # Parse query and validate
             parsed = ast.parse(query, mode='eval')
-            validator = QueryValidator(security_context)
+            validator = QueryValidator(security_context)  # Ensure QueryValidator is defined elsewhere
             validator.visit(parsed)
             # Execute in isolated namespace
             namespace = self._create_restricted_namespace(security_context)
@@ -342,59 +463,49 @@ class RuntimeManager:
                 operation="execute",
                 success=False
             )
-            raise RuntimeError(f"Query execution failed: {str(e)}")
+            logging.error(f"Error executing query: {e}")
+            raise
     def _create_restricted_namespace(self, security_context: SecurityContext) -> dict:
-        """Creates a restricted namespace based on user's access policy"""
-        base_namespace = {}
-        # Add allowed builtins based on access policy
-        if security_context.access_policy.level in [AccessLevel.EXECUTE, AccessLevel.ADMIN]:
-            safe_builtins = {
-                'len': len,
-                'str': str,
-                'int': int,
-                'float': float,
-                'list': list,
-                'dict': dict,
-                'print': print
-            }
-            base_namespace.update(safe_builtins)
-        return base_namespace
-def isModule(rawClsOrFn: Union[Type, Callable]) -> Optional[str]:
-    pyModule = inspect.getmodule(rawClsOrFn)
-    if hasattr(pyModule, "__file__"):
-        return str(Path(pyModule.__file__).resolve())
-    return None
-def getModuleImportInfo(rawClsOrFn: Union[Type, Callable]) -> Tuple[Optional[str], str, str]:
-    """
-    Given a class or function in Python, get all the information needed to import it in another Python process.
-    This version balances portability and optimization using camel case.
-    """
-    pyModule = inspect.getmodule(rawClsOrFn)
-    if pyModule is None or pyModule.__name__ == '__main__':
-        return None, 'interactive', rawClsOrFn.__name__
-    modulePath = isModule(rawClsOrFn)
-    if not modulePath:
-        # Built-in or frozen module
-        return None, pyModule.__name__, rawClsOrFn.__name__
-    rootPath = str(Path(modulePath).parent)
-    moduleName = pyModule.__name__
-    clsOrFnName = getattr(rawClsOrFn, "__qualname__", rawClsOrFn.__name__)
-    if getattr(pyModule, "__package__", None):
-        try:
-            package = __import__(pyModule.__package__)
-            packagePath = str(Path(package.__file__).parent)
-            if Path(packagePath) in Path(modulePath).parents:
-                rootPath = str(Path(packagePath).parent)
-            else:
-                print(f"Warning: Module is not in the expected package structure. Using file parent as root path.")
-        except Exception as e:
-            print(f"Warning: Error processing package structure: {e}. Using file parent as root path.")
-
-    return rootPath, moduleName, clsOrFnName
+        # Create a restricted namespace based on security context
+        return {
+            "__builtins__": None,  # Disable built-in functions
+            "print": print if security_context.access_policy.level >= AccessLevel.READ else None,
+            # Add other safe functions as needed
+        }
+    def isModule(rawClsOrFn: Union[Type, Callable]) -> Optional[str]:
+        pyModule = inspect.getmodule(rawClsOrFn)
+        if hasattr(pyModule, "__file__"):
+            return str(Path(pyModule.__file__).resolve())
+        return None
+    def getModuleImportInfo(rawClsOrFn: Union[Type, Callable]) -> Tuple[Optional[str], str, str]:
+        """
+        Given a class or function in Python, get all the information needed to import it in another Python process.
+        This version balances portability and optimization using camel case.
+        """
+        pyModule = inspect.getmodule(rawClsOrFn)
+        if pyModule is None or pyModule.__name__ == '__main__':
+            return None, 'interactive', rawClsOrFn.__name__
+        modulePath = isModule(rawClsOrFn)
+        if not modulePath:
+            # Built-in or frozen module
+            return None, pyModule.__name__, rawClsOrFn.__name__
+        rootPath = str(Path(modulePath).parent)
+        moduleName = pyModule.__name__
+        clsOrFnName = getattr(rawClsOrFn, "__qualname__", rawClsOrFn.__name__)
+        if getattr(pyModule, "__package__", None):
+            try:
+                package = __import__(pyModule.__package__)
+                packagePath = str(Path(package.__file__).parent)
+                if Path(packagePath) in Path(modulePath).parents:
+                    rootPath = str(Path(packagePath).parent)
+                else:
+                    print(f"Warning: Module is not in the expected package structure. Using file parent as root path.")
+            except Exception as e:
+                print(f"Warning: Error processing package structure: {e}. Using file parent as root path.")
+        return rootPath, moduleName, clsOrFnName
 class QueryValidator(ast.NodeVisitor):
     def __init__(self, security_context: SecurityContext):
         self.security_context = security_context
-
     def visit_Name(self, node):
         # Validate access to variables
         if not self.security_context.access_policy.can_access(
@@ -410,40 +521,19 @@ class QueryValidator(ast.NodeVisitor):
             ):
                 raise PermissionError(f"Access denied to function: {node.func.id}")
         self.generic_visit(node)
-# STATIC TYPING ========================================================
-#-------------------------------###########MIXINS##############-------------------------------#
-
 def load_modules():
-    try:
-        mixins = []
-        for path in pathlib.Path(__file__).parent.glob("*.py"):
-            if path.name.startswith("_"):
-                continue
-            module_name = path.stem
-            spec = spec_from_file_location(module_name, path)
-            if spec is None or spec.loader is None:
-                raise ImportError(f"Cannot load module {module_name}")
-            module = module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
-            mixins.append(module)
-        return mixins
-    except Exception as e:
-        logger.error(f"Error importing internal modules: {e}")
-        sys.exit(1)
-
-mixins = load_modules() # Import the internal modules
-
+    """Function to load modules into the global runtime manager."""
+    manager = RuntimeManager()  # You can adapt this as needed
+    manager.root.load_modules()
+    return manager.root.available_modules  # Return available modules for access
+mixins = load_modules() # Import the internal modules and literal stdlibs
 if mixins:
     __all__ = [mixin.__name__ for mixin in mixins]
 else:
     __all__ = []
-
-
 """ hacked namespace uses `__all__` as a whitelist of symbols which are executable source code.
 Non-whitelisted modules or runtime SimpleNameSpace()(s) are treated as 'data' which we call associative 
 'articles' within the knowledge base, loaded at runtime. They are, however, logic and state."""
-
 def reload_module(module):
     try:
         importlib.reload(module)
@@ -451,18 +541,15 @@ def reload_module(module):
     except Exception as e:
         logger.error(f"Error reloading module {module.__name__}: {e}")
         return False
-
 class KnowledgeBase:
     def __init__(self, base_dir):
         self.base_dir = Path(base_dir)
         self.globals = SimpleNamespace()
         self.globals.__all__ = []
         self.initialize()
-
     def initialize(self):
         self._import_py_modules(self.base_dir)
         self._load_articles(self.base_dir)
-
     def _import_py_modules(self, directory):
         for path in directory.rglob("*.py"): # Recursively find all .py files
             if path.name.startswith("_"):
@@ -478,7 +565,6 @@ class KnowledgeBase:
             except Exception as e:
                 # Use logger to log exceptions rather than printing
                 logger.exception(f"Error importing module {module_name}: {e}")
-
     def _load_articles(self, directory):
         for suffix in ['*.md', '*.txt']:
             for path in directory.rglob(suffix): # Recursively find all .md and .txt files
@@ -493,7 +579,6 @@ class KnowledgeBase:
                 except Exception as e:
                     # Use logger to log exceptions rather than printing
                     logger.exception(f"Error loading article from {path}: {e}")
-
     def execute_query(self, query):
         try:
             parsed = ast.parse(query, mode='eval')
@@ -504,7 +589,6 @@ class KnowledgeBase:
             # Return a more user-friendly error message
             logger.exception("Query execution error:")
             return f"Error executing query: {str(e)}"
-
     def execute_query_async(self, query):
         try:
             parsed = ast.parse(query, mode='eval')
@@ -515,18 +599,15 @@ class KnowledgeBase:
             # Return a more user-friendly error message
             logger.exception("Query execution error:")
             return f"Error executing query: {str(e)}"
-
 class Article:
     def __init__(self, content):
         self.content = content
-
     def __call__(self):
         # Execute the content as code if it's valid Python
         try:
             exec(self.content)
         except Exception as e:
             logger.error(f"Error executing article content: {e}")
-
 def list_available_functions(self):
     return [name for name in dir(self.globals) if callable(getattr(self.globals, name))]
 
@@ -559,49 +640,6 @@ def atom(cls: Type[{T, V, C}]) -> Type[{T, V, C}]: # homoicon decorator
 
     cls.__init__ = new_init
     return cls
-
-def log(level=logging.INFO):
-    def decorator(func: Callable):
-        @wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            Logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
-            try:
-                result = await func(*args, **kwargs)
-                Logger.log(level, f"Completed {func.__name__} with result: {result}")
-                return result
-            except Exception as e:
-                Logger.exception(f"Error in {func.__name__}: {str(e)}")
-                raise
-
-        @wraps(func)
-        def sync_wrapper(*args, **kwargs):
-            Logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
-            try:
-                result = func(*args, **kwargs)
-                Logger.log(level, f"Completed {func.__name__} with result: {result}")
-                return result
-            except Exception as e:
-                Logger.exception(f"Error in {func.__name__}: {str(e)}")
-                raise
-        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
-    return decorator
-
-def validate(cls: Type[T]) -> Type[T]:
-    original_init = cls.__init__
-    sig = inspect.signature(original_init)
-
-    def new_init(self: T, *args: Any, **kwargs: Any) -> None:
-        bound_args = sig.bind(self, *args, **kwargs)
-        for key, value in bound_args.arguments.items():
-            if key in cls.__annotations__:
-                expected_type = cls.__annotations__.get(key)
-                if not isinstance(value, expected_type):
-                    raise TypeError(f"Expected {expected_type} for {key}, got {type(value)}")
-        original_init(self, *args, **kwargs)
-
-    cls.__init__ = new_init
-    return cls
-
 def encode(atom: 'Atom') -> bytes:
     data = {
         'tag': atom.tag,
@@ -615,116 +653,6 @@ def decode(data: bytes) -> 'Atom':
     data = pickle.loads(data)
     atom = Atom(data['tag'], data['value'], [decode(child) for child in data['children']], data['metadata'])
     return atom
-
-# DECORATORS =========================================================
-def atom(cls: Type[{T, V, C}]) -> Type[{T, V, C}]: # homoicon decorator
-    """Decorator to create a homoiconic atom."""
-    original_init = cls.__init__
-    def new_init(self, *args, **kwargs):
-        original_init(self, *args, **kwargs)
-        if not hasattr(self, 'id'):
-            self.id = hashlib.sha256(self.__class__.__name__.encode('utf-8')).hexdigest()
-
-    cls.__init__ = new_init
-    return cls
-def memoize(func: Callable) -> Callable:
-    """
-    Caching decorator using LRU cache with unlimited size.
-    """
-    return lru_cache(maxsize=None)(func)
-@contextmanager
-def memoryProfiling(active: bool = True):
-    """
-    Context manager for memory profiling using tracemalloc.
-    Captures allocations made within the context block.
-    """
-    if active:
-        tracemalloc.start()
-        try:
-            yield
-        finally:
-            snapshot = tracemalloc.take_snapshot()
-            tracemalloc.stop()
-            displayTop(snapshot)
-    else:
-        yield None
-def timeFunc(func: Callable) -> Callable:
-    """
-    Time execution of a function.
-    """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        logger.info(f"Function {func.__name__} took {elapsed_time:.4f} seconds to execute.")
-        return result
-    return wrapper
-def displayTop(snapshot, key_type: str = 'lineno', limit: int = 3):
-    """
-    Display top memory-consuming lines.
-    """
-    tracefilter = ("<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
-    filters = [tracemalloc.Filter(False, item) for item in tracefilter]
-    filtered_snapshot = snapshot.filter_traces(filters)
-    topStats = filtered_snapshot.statistics(key_type)
-    result = [f"Top {limit} lines:"]
-    for index, stat in enumerate(topStats[:limit], 1):
-        frame = stat.traceback[0]
-        result.append(f"#{index}: {frame.filename}:{frame.lineno}: {stat.size / 1024:.1f} KiB")
-        line = linecache.getline(frame.filename, frame.lineno).strip()
-        if line:
-            result.append(f"    {line}")
-    # Show the total size and count of other items
-    other = topStats[limit:]
-    if other:
-        size = sum(stat.size for stat in other)
-        result.append(f"{len(other)} other: {size / 1024:.1f} KiB")
-    total = sum(stat.size for stat in topStats)
-    result.append(f"Total allocated size: {total / 1024:.1f} KiB")
-    logger.info("\n".join(result))
-def log(level: int = logging.INFO):
-    """
-    Logging decorator for functions. Handles both synchronous and asynchronous functions.
-    """
-    def decorator(func: Callable):
-        @wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            logger.log(level, f"Executing async {func.__name__} with args: {args}, kwargs: {kwargs}")
-            try:
-                result = await func(*args, **kwargs)
-                logger.log(level, f"Completed async {func.__name__} with result: {result}")
-                return result
-            except Exception as e:
-                logger.exception(f"Error in async {func.__name__}: {e}")
-                raise
-        @wraps(func)
-        def sync_wrapper(*args, **kwargs):
-            logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
-            try:
-                result = func(*args, **kwargs)
-                logger.log(level, f"Completed {func.__name__} with result: {result}")
-                return result
-            except Exception as e:
-                logger.exception(f"Error in {func.__name__}: {e}")
-                raise
-        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
-    return decorator
-@log()
-def snapShot(func: Callable) -> Callable:
-    """
-    Capture memory snapshots before and after function execution. OBJECT not a wrapper
-    """
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        tracemalloc.start()
-        result = func(*args, **kwargs)
-        snapshot = tracemalloc.take_snapshot()
-        tracemalloc.stop()
-        displayTop(snapshot)
-        return result
-    return wrapper
 
 #-------------------------------############MAIN###############-------------------------------#
 class main():
@@ -755,22 +683,14 @@ class main():
         logger.info(f"Sync result: {result}")
     
     runAsync = lambda f: asyncio.run(f()) if asyncio.iscoroutinefunction(f) else f()
-
 if __name__ == "__main__":
     """main runtime for CLI, logging, and initialization."""
-    args = logArgs()  # Parse logging arguments
-    
-    if IS_WINDOWS:
-    # windowsOptions = ['IDLE', 'BELOW_NORMAL', 'NORMAL', 'ABOVE_NORMAL',
-    #   'HIGH', 'REALTIME']
-        set_process_priority('NORMAL')
-    elif IS_POSIX:
-        set_process_priority(0)
-    
     try:
-        logger = setupLogger(args.log_name, args.log_level, args.log_datefmt, [logging.StreamHandler()])
+        tracemalloc.start()
+        snapshot = tracemalloc.take_snapshot()
+        logger = setup_logger("main")  # Providing the required name parameter
         m = main
-        
+        displayTop(snapshot)
         def print_help():
             print("Available commands:")
             print("  async - Run async function")

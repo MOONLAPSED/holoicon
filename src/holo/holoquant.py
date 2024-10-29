@@ -15,6 +15,30 @@ class Serializable(Protocol):
     def to_str(self) -> str: ...
     def dict(self) -> dict: ...
 
+"""Homoiconism dictates that, upon runtime validation, all objects are code and data.
+To fascilitate; we utilize first class functions and a static typing system."""
+T = TypeVar('T', bound=any) # T for TypeVar, V for ValueVar. Homoicons are T+V.
+S = TypeVar('S', bound='Serializable') # complex, 64bit+ objects
+V = TypeVar('V', bound=Union[int, float, str, bool, list, dict, tuple, set, object, Callable, type])
+C = TypeVar('C', bound=Callable[..., Any])  # callable 'T'/'V' first class function interface
+DataType = Enum('DataType', 'INTEGER FLOAT STRING BOOLEAN NONE LIST TUPLE') # 'T' vars (stdlib)
+AtomType = Enum('AtomType', 'FUNCTION CLASS MODULE OBJECT') # 'C' vars (homoiconic methods or classes)
+def atom(cls: Type[{T, V, C}]) -> Type[{T, V, C}]: # homoicon decorator
+    """Decorator to create a homoiconic atom."""
+    original_init = cls.__init__
+    def new_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        if not hasattr(self, 'id'):
+            self.id = hashlib.sha256(self.__class__.__name__.encode('utf-8')).hexdigest()
+    cls.__init__ = new_init
+    return cls
+
+class HomoiconicProtocol(Protocol[T, V]):
+    """Protocol that ensures both nominative and homoiconic properties."""
+    def to_code(self) -> C: ...
+    def to_data(self) -> V: ...
+    def get_id(self) -> UUID: ...
+
 class Frame(Generic[T]):
     """
     A Frame represents a nominatively invariant container that preserves
@@ -27,7 +51,6 @@ class Frame(Generic[T]):
         self.content = content
         self.frame_id = frame_id or uuid4()
         self._creation_time = datetime.now()
-    
     def transform(self, f: Callable[[T], S]) -> 'Frame[S]':
         """
         Preserves frame identity across transformations.
@@ -91,43 +114,6 @@ class Runtime(Generic[T]):
         new_frame = original.transform(f)
         self._frames[new_frame.frame_id] = new_frame
         return new_frame.frame_id
-# Enhanced type variables that capture both nominative and homoiconic properties
-class AtomType(Enum):
-    DATA = "DATA"
-    FUNCTION = "FUNCTION"
-class DataType(Enum):
-    INTEGER = "INTEGER"
-    FLOAT = "FLOAT"
-    STRING = "STRING"
-    BOOLEAN = "BOOLEAN"
-    LIST = "LIST"
-    DICT = "DICT"
-    OBJECT = "OBJECT"
-"""Homoiconism dictates that, upon runtime validation, all objects are code and data.
-To fascilitate; we utilize first class functions and a static typing system."""
-T = TypeVar('T', bound=any) # T for TypeVar, V for ValueVar. Homoicons are T+V.
-S = TypeVar('S', bound='Serializable') # complex, 64bit+ objects
-V = TypeVar('V', bound=Union[int, float, str, bool, list, dict, tuple, set, object, Callable, type])
-C = TypeVar('C', bound=Callable[..., Any])  # callable 'T'/'V' first class function interface
-DataType = Enum('DataType', 'INTEGER FLOAT STRING BOOLEAN NONE LIST TUPLE') # 'T' vars (stdlib)
-AtomType = Enum('AtomType', 'FUNCTION CLASS MODULE OBJECT') # 'C' vars (homoiconic methods or classes)
-# DECORATORS =========================================================
-def atom(cls: Type[{T, V, C}]) -> Type[{T, V, C}]: # homoicon decorator
-    """Decorator to create a homoiconic atom."""
-    original_init = cls.__init__
-    def new_init(self, *args, **kwargs):
-        original_init(self, *args, **kwargs)
-        if not hasattr(self, 'id'):
-            self.id = hashlib.sha256(self.__class__.__name__.encode('utf-8')).hexdigest()
-
-    cls.__init__ = new_init
-    return cls
-
-class HomoiconicProtocol(Protocol[T, V]):
-    """Protocol that ensures both nominative and homoiconic properties."""
-    def to_code(self) -> C: ...
-    def to_data(self) -> V: ...
-    def get_id(self) -> UUID: ...
 
 @dataclass
 class HomoiconicFrame(Generic[T, V]):
