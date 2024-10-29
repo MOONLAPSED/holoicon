@@ -80,15 +80,75 @@ import dis
 import linecache
 import tracemalloc
 # ----------------non-homoiconic pre-runtime "ADMIN-SCOPED" source code-------------------------#
-if os.name == 'posix':
-    from ctypes import cdll
-    logger = logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-elif os.name == 'nt':
-    from ctypes import windll
-    from ctypes.wintypes import DWORD, HANDLE
-    logger = logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 IS_WINDOWS = os.name == 'nt'
 IS_POSIX = os.name == 'posix'
+class CustomFormatter(logging.Formatter):
+    grey = "\x1b[38;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    green = "\x1b[32;20m"
+    reset = "\x1b[0m"
+
+    format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+
+    FORMATS = {
+        logging.DEBUG: grey + format + reset,
+        logging.INFO: green + format + reset,
+        logging.WARNING: yellow + format + reset,
+        logging.ERROR: red + format + reset,
+        logging.CRITICAL: bold_red + format + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno, self.format)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.log_queue = Queue()
+        self.log_thread = threading.Thread(target=self.log_thread_func)
+        self.log_thread.start()
+
+    def log_thread_func(self):
+        while True:
+            try:
+                record = self.log_queue.get()
+                if record is None:
+                    break
+                self.handle(record)
+            except Exception:
+                import traceback
+                print("Error in log thread:", file=sys.stderr)
+                traceback.print_exc()
+    
+    def emit(self, record):
+        self.log_queue.put(record)
+    
+    def close(self):
+        self.log_queue.put(None)
+        self.log_thread.join()
+    
+    def AdminLogger(self, name=None):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.DEBUG)
+        ch.setFormatter(self)
+        logger.addHandler(ch)
+        return logger
+
+class AdminLogger(logging.LoggerAdapter):
+    def __init__(self, logger, extra=None):
+        super().__init__(logger, extra or {})
+    
+    def process(self, msg, kwargs):
+        return f"{self.extra['name']}: {msg}", kwargs
+
+logger = AdminLogger(logging.getLogger(__name__))
+
 class ExcludeFilter:
     def __init__(self, exclude_files):
         self.exclude_files = exclude_files
@@ -98,143 +158,6 @@ class ExcludeFilter:
             if frame.filename in self.exclude_files:
                 return False
         return True
-    #tracefilter = ("<<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
-    #tracemalloc.Filter(False, trace for trace in tracemalloc.get_traced_memory() if trace.traceback[0].filename not in tracefilter)
-def memoize(func: Callable) -> Callable:
-    """
-    Caching decorator using LRU cache with unlimited size.
-    """
-    return lru_cache(maxsize=None)(func)
-@contextmanager
-def memoryProfiling(active: bool = True):
-    """
-    Context manager for memory profiling using tracemalloc.
-    Captures allocations made within the context block.
-    """
-    if active:
-        tracemalloc.start()
-        try:
-            yield
-        finally:
-            snapshot = tracemalloc.take_snapshot()
-            tracemalloc.stop()
-            displayTop(snapshot)
-    else:
-        yield None
-def timeFunc(func: Callable) -> Callable:
-    """
-    Time execution of a function.
-    """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        logger.info(f"Function {func.__name__} took {elapsed_time:.4f} seconds to execute.")
-        return result
-    return wrapper
-class CustomFormatter(logging.Formatter):
-    FORMATS = {
-        logging.DEBUG: "\x1b[38;20m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
-        logging.INFO: "\x1b[32;20m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
-        logging.WARNING: "\x1b[33;20m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
-        logging.ERROR: "\x1b[31;20m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
-        logging.CRITICAL: "\x1b[31;1m%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)\x1b[0m",
-    }
-    def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno, self._fmt)
-        formatter = logging.Formatter(log_fmt)
-        return formatter.format(record)
-def setup_logger(name: str, level: int = logging.INFO, log_file: Optional[str] = None):
-    logger = logging.getLogger(name)
-    if logger.hasHandlers():
-        return logger  # Avoid multiple handler additions
-    formatter = CustomFormatter()
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-    if log_file:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-    logger.setLevel(level)
-    return logger
-def log(level=logging.INFO):
-    def decorator(func: Callable):
-        @wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            Logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
-            try:
-                result = await func(*args, **kwargs)
-                Logger.log(level, f"Completed {func.__name__} with result: {result}")
-                return result
-            except Exception as e:
-                Logger.exception(f"Error in {func.__name__}: {str(e)}")
-                raise
-        @wraps(func)
-        def sync_wrapper(*args, **kwargs):
-            Logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
-            try:
-                result = func(*args, **kwargs)
-                Logger.log(level, f"Completed {func.__name__} with result: {result}")
-                return result
-            except Exception as e:
-                Logger.exception(f"Error in {func.__name__}: {str(e)}")
-                raise
-        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
-    return decorator
-@log()
-def snapShot(func: Callable) -> Callable:
-    """
-    Capture memory snapshots before and after function execution. OBJECT not a wrapper
-    """
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        tracemalloc.start()
-        result = func(*args, **kwargs)
-        snapshot = tracemalloc.take_snapshot()
-        tracemalloc.stop()
-        displayTop(snapshot)
-        return result
-    return wrapper
-def displayTop(snapshot, key_type: str = 'lineno', limit: int = 3):
-    """
-    Display top memory-consuming lines.
-    """
-    tracefilter = ("<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
-    filters = [tracemalloc.Filter(False, item) for item in tracefilter]
-    filtered_snapshot = snapshot.filter_traces(filters)
-    topStats = filtered_snapshot.statistics(key_type)
-    result = [f"Top {limit} lines:"]
-    for index, stat in enumerate(topStats[:limit], 1):
-        frame = stat.traceback[0]
-        result.append(f"#{index}: {frame.filename}:{frame.lineno}: {stat.size / 1024:.1f} KiB")
-        line = linecache.getline(frame.filename, frame.lineno).strip()
-        if line:
-            result.append(f"    {line}")
-    # Show the total size and count of other items
-    other = topStats[limit:]
-    if other:
-        size = sum(stat.size for stat in other)
-        result.append(f"{len(other)} other: {size / 1024:.1f} KiB")
-    total = sum(stat.size for stat in topStats)
-    result.append(f"Total allocated size: {total / 1024:.1f} KiB")
-    logger.info("\n".join(result))
-T = TypeVar('T')
-def validate(cls: Type[T]) -> Type[T]:
-    original_init = cls.__init__
-    sig = inspect.signature(original_init)
-    def new_init(self: T, *args: Any, **kwargs: Any) -> None:
-        bound_args = sig.bind(self, *args, **kwargs)
-        for key, value in bound_args.arguments.items():
-            if key in cls.__annotations__:
-                expected_type = cls.__annotations__.get(key)
-                if not isinstance(value, expected_type):
-                    raise TypeError(f"Expected {expected_type} for {key}, got {type(value)}")
-        original_init(self, *args, **kwargs)
-    cls.__init__ = new_init
-    return cls
 def get_lib_handle(lib_name):
     """Find the library handle on Windows."""
     lib_path = ctypes.util.find_library(lib_name)
@@ -608,7 +531,7 @@ class Article:
             exec(self.content)
         except Exception as e:
             logger.error(f"Error executing article content: {e}")
-def list_available_functions(self):
+def List_Available_Functions(self):
     return [name for name in dir(self.globals) if callable(getattr(self.globals, name))]
 
 # STATIC TYPING ========================================================    
@@ -654,6 +577,116 @@ def decode(data: bytes) -> 'Atom':
     atom = Atom(data['tag'], data['value'], [decode(child) for child in data['children']], data['metadata'])
     return atom
 
+def validate(cls: Type[T]) -> Type[T]:
+    original_init = cls.__init__
+    sig = inspect.signature(original_init)
+    def new_init(self: T, *args: Any, **kwargs: Any) -> None:
+        bound_args = sig.bind(self, *args, **kwargs)
+        for key, value in bound_args.arguments.items():
+            if key in cls.__annotations__:
+                expected_type = cls.__annotations__.get(key)
+                if not isinstance(value, expected_type):
+                    raise TypeError(f"Expected {expected_type} for {key}, got {type(value)}")
+        original_init(self, *args, **kwargs)
+    cls.__init__ = new_init
+    return cls
+
+def memoize(func: Callable) -> Callable:
+    """
+    Caching decorator using LRU cache with unlimited size.
+    """
+    return lru_cache(maxsize=None)(func)
+@contextmanager
+def memoryProfiling(active: bool = True):
+    """
+    Context manager for memory profiling using tracemalloc.
+    Captures allocations made within the context block.
+    """
+    if active:
+        tracemalloc.start()
+        try:
+            yield
+        finally:
+            snapshot = tracemalloc.take_snapshot()
+            tracemalloc.stop()
+            displayTop(snapshot)
+    else:
+        yield None
+def timeFunc(func: Callable) -> Callable:
+    """
+    Time execution of a function.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        logger.info(f"Function {func.__name__} took {elapsed_time:.4f} seconds to execute.")
+        return result
+    return wrapper
+def log(level=logging.INFO):
+    def decorator(func: Callable):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
+            try:
+                result = await func(*args, **kwargs)
+                logger.log(level, f"Completed {func.__name__} with result: {result}")
+                return result
+            except Exception as e:
+                logger.exception(f"Error in {func.__name__}: {str(e)}")
+                raise
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            logger.log(level, f"Executing {func.__name__} with args: {args}, kwargs: {kwargs}")
+            try:
+                result = func(*args, **kwargs)
+                logger.log(level, f"Completed {func.__name__} with result: {result}")
+                return result
+            except Exception as e:
+                logger.exception(f"Error in {func.__name__}: {str(e)}")
+                raise
+        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+    return decorator
+@log()
+def snapShot(func: Callable) -> Callable:
+    """
+    Capture memory snapshots before and after function execution. OBJECT not a wrapper
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        tracemalloc.start()
+        result = func(*args, **kwargs)
+        snapshot = tracemalloc.take_snapshot()
+        tracemalloc.stop()
+        displayTop(snapshot)
+        return result
+    return wrapper
+def displayTop(snapshot, key_type: str = 'lineno', limit: int = 3):
+    """
+    Display top memory-consuming lines.
+    """
+    tracefilter = ("<frozen importlib._bootstrap>", "<frozen importlib._bootstrap_external>")
+    filters = [tracemalloc.Filter(False, item) for item in tracefilter]
+    filtered_snapshot = snapshot.filter_traces(filters)
+    topStats = filtered_snapshot.statistics(key_type)
+    result = [f"Top {limit} lines:"]
+    for index, stat in enumerate(topStats[:limit], 1):
+        frame = stat.traceback[0]
+        result.append(f"#{index}: {frame.filename}:{frame.lineno}: {stat.size / 1024:.1f} KiB")
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            result.append(f"    {line}")
+    # Show the total size and count of other items
+    other = topStats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        result.append(f"{len(other)} other: {size / 1024:.1f} KiB")
+    total = sum(stat.size for stat in topStats)
+    result.append(f"Total allocated size: {total / 1024:.1f} KiB")
+    logger.info("\n".join(result))
+
 #-------------------------------############MAIN###############-------------------------------#
 class main():
     """
@@ -688,7 +721,6 @@ if __name__ == "__main__":
     try:
         tracemalloc.start()
         snapshot = tracemalloc.take_snapshot()
-        logger = setup_logger("main")  # Providing the required name parameter
         m = main
         displayTop(snapshot)
         def print_help():
@@ -721,6 +753,7 @@ if __name__ == "__main__":
         logger.info("Main function completed successfully.")
     except Exception as e:
         logger.exception(f"Unhandled exception: {e}")
+
 # ====ABSTRACT_CLASSES============================
 @dataclass
 class GrammarRule:
@@ -854,341 +887,8 @@ class Atom(ABC):
     __truediv__ = lambda self, other: self.value / other
     __floordiv__ = lambda self, other: self.value // other
 
-
-class BaseContextManager(ABC):
-    """
-    Defines the interface for a context manager, ensuring a resource is properly
-    managed, with setup before entering the context and cleanup after exiting.
-
-    This abstract base class must be subclassed to implement the `__enter__` and
-    `__exit__` methods, enabling use with the `with` statement for resource
-    management, such as opening and closing files, acquiring and releasing locks,
-    or establishing and terminating network connections.
-
-    Implementers should override the `__enter__` and `__exit__` methods according to
-    the resource's specific setup and cleanup procedures.
-
-    Methods
-    -------
-    __enter__()
-        Called when entering the runtime context, and should return the resource
-        that needs to be managed.
-
-    __exit__(exc_type, exc_value, traceback)
-        Called when exiting the runtime context, handles exception information if any,
-        and performs the necessary cleanup.
-
-    See Also
-    --------
-    with statement : The `with` statement used for resource management in Python.
-
-    Notes
-    -----
-    It's important that implementations of `__exit__` method should return `False` to
-    propagate exceptions, unless the context manager is designed to suppress them. In
-    such cases, it should return `True`.
-
-    Examples
-    --------
-    """
-    """
-    >>> class FileContextManager(BaseContextManager):
-    ...     def __enter__(self):
-    ...         self.file = open('somefile.txt', 'w')
-    ...         return self.file
-    ...     def __exit__(self, exc_type, exc_value, traceback):
-    ...         self.file.close()
-    ...         # Handle exceptions or just pass
-    ...
-    >>> with FileContextManager() as file:
-    ...     file.write('Hello, world!')
-    ...
-    >>> # somefile.txt will be closed after the with block
-    """
-
-    @abstractmethod
-    def __enter__(self) -> Any:
-        """
-        Enters the runtime context and returns an object representing the context.
-
-        The returned object is often the context manager instance itself, so it
-        can include methods and attributes to interact with the managed resource.
-
-        Returns
-        -------
-        Any
-            An object representing the managed context, frequently the
-            context manager instance itself.
-        """
-        pass
-
-    @abstractmethod
-    def __exit__(self, exc_type: Optional[Type[BaseException]], exc_value: Optional[BaseException],
-                 traceback: Optional[Any]) -> Optional[bool]:
-        """
-        Exits the runtime context and performs any necessary cleanup actions.
-
-        Parameters
-        ----------
-        exc_type : Type[BaseException] or None
-            The type of exception raised (if any) during the context, otherwise `None`.
-        exc_value : BaseException or None
-            The exception instance raised (if any) during the context, otherwise `None`.
-        traceback : Any or None
-            The traceback object associated with the raised exception (if any), otherwise `None`.
-
-        Returns
-        -------
-        Optional[bool]
-            Should return `True` to suppress exceptions (if any) and `False` to
-            propagate them. If no exception was raised, the return value is ignored.
-        """
-        pass
-
-# Using the BaseContextManager requires creating a subclass and providing specific
-# implementations for the __enter__ and __exit__ methods, tailored to the managed
-# resource or the context-specific behavior.
-
-
-class BaseProtocol(ABC):
-    """
-    Serves as an abstract foundational structure for defining interfaces
-    specific to communication protocols. This base class enforces the methods
-    to be implemented for encoding/decoding data and handling data transmission
-    over an established communication channel.
-
-    It is expected that concrete implementations will provide the necessary
-    business logic for the actual encoding schemes, data transmission methods,
-    and connection management appropriate to the chosen communication medium.
-
-    Methods
-    ----------
-    encode(data)
-        Converts data into a format suitable for transmission.
-
-    decode(encoded_data)
-        Converts data from the transmission format back to its original form.
-
-    transmit(encoded_data)
-        Initiates transfer of encoded data over the communication protocol's channel.
-
-    send(data)
-        Packets and sends data ensuring compliance with the underlying transmission protocol.
-
-    receive()
-        Listens for incoming data, decodes it, and returns the original message.
-
-    connect()
-        Initiates the communication channel, making it active and ready to use.
-
-    disconnect()
-        Properly closes and cleans up the established communication channel.
-
-    See Also
-    --------
-    Abstract base class : A guide to Python's abstract base classes and how they work.
-
-    Notes
-    -----
-    A concrete implementation of this abstract class must override all the
-    abstract methods. It may also provide additional methods and attributes
-    specific to the concrete protocol being implemented.
-
-    """
-
-    @abstractmethod
-    def encode(self, data: Any) -> bytes:
-        """
-        Transforms given data into a sequence of bytes suitable for transmission.
-
-        Parameters
-        ----------
-        data : Any
-            The data to encode for transmission.
-
-        Returns
-        -------
-        bytes
-            The resulting encoded data as a byte sequence.
-        """
-        pass
-
-    @abstractmethod
-    def decode(self, encoded_data: bytes) -> Any:
-        """
-        Reverses the encoding, transforming the transmitted byte data back into its original form.
-
-        Parameters
-        ----------
-        encoded_data : bytes
-            The byte sequence representing encoded data.
-
-        Returns
-        -------
-        Any
-            The resulting decoded data in its original format.
-        """
-        pass
-
-    @abstractmethod
-    def transmit(self, encoded_data: bytes) -> None:
-        """
-        Sends encoded data over the communication protocol's channel.
-
-        Parameters
-        ----------
-        encoded_data : bytes
-            The byte sequence representing encoded data ready for transmission.
-        """
-        pass
-
-    @abstractmethod
-    def send(self, data: Any) -> None:
-        """
-        Sends data by encoding and then transmitting it.
-
-        Parameters
-        ----------
-        data : Any
-            The data to send over the communication channel, after encoding.
-        """
-        pass
-
-    @abstractmethod
-    def receive(self) -> Any:
-        """
-        Collects incoming data, decodes it, and returns the original message.
-
-        Returns
-        -------
-        Any
-            The decoded data received from the communication channel.
-        """
-        pass
-
-    @abstractmethod
-    def connect(self) -> None:
-        """
-        Opens and prepares the communication channel for data transmission.
-        """
-        pass
-
-    @abstractmethod
-    def disconnect(self) -> None:
-        """
-        Closes the established communication channel and performs clean-up operations.
-        """
-        pass
-
-
-class BaseRuntime(ABC):
-    """
-    Describes the fundamental operations for runtime environments that manage
-    the execution lifecycle of tasks. It provides a protocol for starting and
-    stopping the runtime, executing tasks, and scheduling tasks based on triggers.
-
-    Concrete subclasses should implement these methods to handle the specifics
-    of task execution and scheduling within a given runtime environment, such as
-    a containerized environment or a local execution context.
-
-    Methods
-    -------
-    start()
-        Initializes and starts the runtime environment, preparing it for task execution.
-
-    stop()
-        Shuts down the runtime environment, performing any necessary cleanup.
-
-    execute(task, **kwargs)
-        Executes a single task within the runtime environment, passing optional parameters.
-
-    schedule(task, trigger)
-        Schedules a task for execution based on a triggering event or condition.
-
-    See Also
-    --------
-    BaseRuntime : A parent class defining the methods used by all runtime classes.
-
-    Notes
-    -----
-    A `BaseRuntime` is designed to provide an interface for task execution and management
-    without tying the implementation to any particular execution model or technology,
-    allowing for a variety of backends ranging from local processing to distributed computing.
-
-    Examples
-    --------
-    """
-    """
-    >>> class MyRuntime(BaseRuntime):
-    ...     def start(self):
-    ...         print("Runtime starting")
-    ...
-    ...     def stop(self):
-    ...         print("Runtime stopping")
-    ...
-    ...     def execute(self, task, **kwargs):
-    ...         print(f"Executing {task} with {kwargs}")
-    ...
-    ...     def schedule(self, task, trigger):
-    ...         print(f"Scheduling {task} on {trigger}")
-    >>> runtime = MyRuntime()
-    >>> runtime.start()
-    Runtime starting
-    >>> runtime.execute('Task1', param='value')
-    Executing Task1 with {'param': 'value'}
-    >>> runtime.stop()
-    Runtime stopping
-    """
-
-    @abstractmethod
-    def start(self) -> None:
-        """
-        Performs any necessary initialization and starts the runtime environment,
-        making it ready for executing tasks.
-        """
-        pass
-
-    @abstractmethod
-    def stop(self) -> None:
-        """
-        Cleans up any resources and stops the runtime environment, ensuring that
-        all tasks are properly shut down and that the environment is left in a
-        clean state.
-        """
-        pass
-
-    @abstractmethod
-    def execute(self, task: Callable[..., Any], **kwargs: Any) -> None:
-        """
-        Runs a given task within the runtime environment, providing any additional
-        keyword arguments needed by the task.
-
-        Parameters
-        ----------
-        task : Callable[..., Any]
-            The task to be executed.
-        kwargs : dict
-            A dictionary of keyword arguments for the task execution.
-        """
-        pass
-
-    @abstractmethod
-    def schedule(self, task: Callable[..., Any], trigger: Any) -> None:
-        """
-        Schedules a task for execution when a specific trigger occurs within the
-        runtime environment.
-
-        Parameters
-        ----------
-        task : Callable[..., Any]
-            The task to be scheduled.
-        trigger : Any
-            The event or condition that triggers the task execution.
-        """
-        pass
-
-
-class TokenSpace(ABC):
+@atom
+class TokenSpace(Atom, ABC):
     """
     Defines a generic interface for managing a space of tokens within a
     given context, such as a simulation or a data flow control system. It provides
